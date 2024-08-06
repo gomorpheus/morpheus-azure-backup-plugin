@@ -19,3 +19,24 @@ gradle-app.setting
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
+
+# Asset Pipeline cache
+.asscache
+.assetcache
+
+# Intellij
+.idea
+*.ipr
+*.iml
+*.iws
+.idea/
+
+# MacOS DS Store file
+.DS_Store
+
+# ??
+out/
+
+# Included build libs
+lib/
+
