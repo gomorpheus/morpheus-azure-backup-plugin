@@ -42,9 +42,9 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	String getName() {
-		return 'Azure Backup Backup Provider'
+		return 'Azure Backup'
 	}
-	
+
 	/**
 	 * Returns the integration logo for display when a user needs to view or add this integration
 	 * @return Icon representation of assets stored in the src/assets of the project.
@@ -66,7 +66,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	public Boolean getCreatable() { return true; }
-	
+
 	/**
 	 * The backup provider supports restoring to a new workload.
 	 */
@@ -142,7 +142,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 		Collection<OptionType> optionTypes = []
 		return optionTypes;
 	}
-	
+
 	/**
 	 * Get the list of replication option types for the backup provider. The option types are used for creating and updating
 	 * replications.
@@ -172,7 +172,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 		Collection<OptionType> optionTypes = []
 		return optionTypes;
 	}
-	
+
 	/**
 	 * Get the list of replication group option types for the backup provider. The option types are used for creating
 	 * replications on an instance during provisioning.
