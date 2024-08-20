@@ -15,6 +15,7 @@
 */
 package com.morpheusdata.azure
 
+import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 
 class AzureBackupPlugin extends Plugin {
@@ -36,5 +37,9 @@ class AzureBackupPlugin extends Plugin {
     @Override
     void onDestroy() {
         //nothing to do for now
+    }
+
+    MorpheusContext getMorpheusContext() {
+        this.morpheus
     }
 }

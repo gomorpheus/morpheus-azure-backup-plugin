@@ -9,15 +9,19 @@ import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
+import com.morpheusdata.azure.services.ApiService
+import com.morpheusdata.azure.sync.PolicySync
 import groovy.util.logging.Slf4j
 
 @Slf4j
 class AzureBackupProvider extends AbstractBackupProvider {
 
 	BackupJobProvider backupJobProvider;
+	ApiService apiService
 
 	AzureBackupProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		super(plugin, morpheusContext)
+		apiService = new ApiService(morpheusContext)
 
 		AzureBackupTypeProvider backupTypeProvider = new AzureBackupTypeProvider(plugin, morpheus)
 		plugin.registerProvider(backupTypeProvider)
@@ -130,6 +134,13 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	@Override
 	Collection<OptionType> getOptionTypes() {
 		Collection<OptionType> optionTypes = []
+
+		optionTypes << new OptionType(
+				code:'backupProviderType.azure.cloudId', inputType: OptionType.InputType.SELECT, name:'Cloud', category:'backupProviderType.azure', noBlank: true,
+				fieldName:'cloudId', fieldCode: 'gomorpheus.label.cloud', fieldLabel:'Cloud', fieldContext:'config', fieldSet:'', fieldGroup:'Options',
+				required:true, enabled:true, editable:true, global:false, optionSource: 'clouds', optionSourceType:'azure',
+				placeHolder:null, helpBlock:'', defaultValue:'global', custom:false, displayOrder:0, fieldClass:null, fieldSize:15)
+
 		return optionTypes
 	}
 
@@ -223,8 +234,33 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	ServiceResponse validateBackupProvider(BackupProviderModel backupProviderModel, Map opts) {
-		def rtn = ServiceResponse.success(backupProviderModel)
-		return rtn
+		def rtn = [success:false, errors:[:]]
+		try {
+			def apiOpts = [:]
+
+			if(rtn.errors.size() == 0) {
+				def testResults = verifyAuthentication(backupProviderModel, apiOpts)
+				log.debug("api test results: {}", testResults)
+				if(testResults.success == true) {
+					rtn.success = true
+				} else if(testResults.invalidLogin == true) {
+					rtn.msg = testResults.msg ?: 'unauthorized - invalid credentials'
+				} else if(testResults.found == false) {
+					rtn.msg = testResults.msg ?: 'Azure backup service not found - invalid host'
+				} else {
+					rtn.msg = testResults.msg ?: 'unable to connect to Azure backup service'
+				}
+			}
+		} catch(e) {
+			log.error("error validating Azure Backup configuration: ${e}", e)
+			rtn.msg = 'unknown error connecting to Azure Backup service'
+			rtn.success = false
+		}
+		if(rtn.success) {
+			return ServiceResponse.success(backupProviderModel, rtn.msg)
+		} else {
+			return ServiceResponse.error(rtn.msg, rtn.errors as Map, backupProviderModel)
+		}
 	}
 
 	/**
@@ -248,6 +284,50 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	ServiceResponse refresh(BackupProviderModel backupProviderModel) {
-		return ServiceResponse.success()
+		log.debug("refresh backup provider: [{}:{}]", backupProviderModel.name, backupProviderModel.id)
+
+		ServiceResponse rtn = ServiceResponse.prepare()
+		try {
+			def authConfig = apiService.getAuthConfig(backupProviderModel)
+			def apiOpts = [authConfig:authConfig]
+			def hostOnline = true
+			if(hostOnline) {
+				def testResults = verifyAuthentication(backupProviderModel, apiOpts)
+				if(testResults.success == true) {
+					morpheus.async.backupProvider.updateStatus(backupProviderModel, 'ok', null).subscribe().dispose()
+
+					rtn.success = true
+				} else {
+					if(testResults.invalidLogin == true) {
+						log.debug("refreshBackupProvider: Invalid credentials")
+						morpheus.async.backupProvider.updateStatus(backupProviderModel, 'error', 'invalid credentials').subscribe().dispose()
+					} else {
+						log.debug("refreshBackupProvider: error connecting to host")
+						morpheus.async.backupProvider.updateStatus(backupProviderModel, 'error', 'error connecting').subscribe().dispose()
+					}
+				}
+			} else {
+				morpheus.async.backupProvider.updateStatus(backupProviderModel, 'offline', 'azure not reachable').subscribe().dispose()
+			}
+		} catch(Exception e) {
+			log.error("error refreshing backup provider {}::{}: {}", plugin.name, this.name, e)
+		}
+		return rtn
+	}
+
+	private verifyAuthentication(BackupProviderModel backupProviderModel, Map opts) {
+		def rtn = [success:false, invalidLogin:false, found:true]
+		opts.authConfig = opts.authConfig ?: apiService.getAuthConfig(backupProviderModel)
+		def requestResults = apiService.listSubscriptions(opts.authConfig, opts)
+
+		if(requestResults.success == true) {
+			rtn.success = true
+		} else {
+			if(requestResults?.errorCode == '404' || requestResults?.errorCode == 404)
+				rtn.found = false
+			if(requestResults?.errorCode == '401' || requestResults?.errorCode == 401)
+				rtn.invalidLogin = true
+		}
+		return rtn
 	}
 }
