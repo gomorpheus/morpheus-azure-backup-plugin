@@ -1,5 +1,6 @@
 package com.morpheusdata.azure
 
+import com.morpheusdata.azure.sync.VaultSync
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.AbstractBackupProvider
@@ -10,7 +11,6 @@ import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.azure.services.ApiService
-import com.morpheusdata.azure.sync.PolicySync
 import groovy.util.logging.Slf4j
 
 @Slf4j
@@ -295,6 +295,8 @@ class AzureBackupProvider extends AbstractBackupProvider {
 				def testResults = verifyAuthentication(backupProviderModel, apiOpts)
 				if(testResults.success == true) {
 					morpheus.async.backupProvider.updateStatus(backupProviderModel, 'ok', null).subscribe().dispose()
+
+					new VaultSync(backupProviderModel, apiService, plugin).execute()
 
 					rtn.success = true
 				} else {
