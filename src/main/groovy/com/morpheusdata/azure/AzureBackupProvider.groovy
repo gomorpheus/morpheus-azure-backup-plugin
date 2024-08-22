@@ -11,6 +11,7 @@ import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.azure.services.ApiService
+import com.morpheusdata.azure.sync.PolicySync
 import groovy.util.logging.Slf4j
 
 @Slf4j
@@ -296,6 +297,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 				if(testResults.success == true) {
 					morpheus.async.backupProvider.updateStatus(backupProviderModel, 'ok', null).subscribe().dispose()
 
+					new PolicySync(backupProviderModel, apiService, plugin).execute()
 					new VaultSync(backupProviderModel, apiService, plugin).execute()
 
 					rtn.success = true
