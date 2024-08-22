@@ -284,6 +284,34 @@ class ApiService {
         return rtn
     }
 
+    static triggerOnDemandBackup(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure//protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}/backup"
+            def apiVersion = '2016-12-01'
+            def headers = buildHeaders(null, token, opts)
+            def body = [
+                properties: [
+                    objectType: "IaasVMBackupRequest"
+                ]
+            ]
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+            if(results.success) {
+                rtn.results = results.headers?.Location
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("triggerOnDemandBackup error: ${e}", e)
+        }
+        return rtn
+    }
+
     static removeProtection(Map authConfig, Map opts) {
         def rtn = [success: false]
 
