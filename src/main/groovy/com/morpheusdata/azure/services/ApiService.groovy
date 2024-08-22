@@ -186,7 +186,193 @@ class ApiService {
         return rtn
     }
 
-    static getAzureProxy(Cloud cloud) {
+    static triggerCacheProtectableVms(Map authConfig, Map opts) {
+        def rtn = [success: false]
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/refreshContainers"
+            def apiVersion = '2016-12-01'
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+            if(results.success) {
+                rtn.results = results.headers?.Location
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("cacheProtectableVms error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static listProtectableVms(Map authConfig, Map opts) {
+        def rtn = [success: false]
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupProtectableItems"
+            def apiVersion = '2016-12-01'
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion, $filter: "backupManagementType eq 'AzureIaasVM'"]])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            if(results.success && results.data) {
+                rtn.results = results.data
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("listVaults error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static listProtectedVms(Map authConfig, Map opts) {
+        def rtn = [success: false]
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupProtectedItems"
+            def apiVersion = '2024-04-01'
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            if(results.success && results.data) {
+                rtn.results = results.data
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("listVaults error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static enableProtection(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiVersion = '2024-04-01'
+            def headers = buildHeaders(null, token, opts)
+
+            // need to create body
+            def body = [
+                properties: [
+                    protectedItemType: 'Microsoft.Compute/virtualMachines',
+                    sourceResourceId: opts.vmId,
+                    policyId: opts.policyId
+                ]
+            ]
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
+            if(results.success) {
+                rtn.results = results.headers?.Location
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("listVaults error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static removeProtection(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            // externalId will have all this instead of bulding
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiVersion = '2024-04-01'
+            def headers = buildHeaders(null, token, opts)
+            def body = [
+                properties: [
+                    protectedItemType: 'Microsoft.Compute/virtualMachines',
+                    sourceResourceId: opts.vmId,
+                    protectionState: 'ProtectionStopped'
+                ]
+            ]
+
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
+            if(results.success) {
+                rtn.results = results.headers?.Location
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("removeBackup error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static deleteBackup(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiVersion = '2019-05-13'
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'DELETE')
+            if(results.success) {
+                rtn.results = results.headers?.Location
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("listVaults error: ${e}", e)
+        }
+        return rtn
+    }
+
+    // if soft delete is enabled have to undo delete before vm can be protected again
+    static undoDeleteBackup(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiVersion = '2019-05-13'
+            def headers = buildHeaders(null, token, opts)
+            def body = [
+                properties: [
+                    protectedItemType: 'Microsoft.Compute/virtualMachines',
+                    sourceResourceId: opts.vmId,
+                    protectionState: 'ProtectionStopped',
+                    "isRehydrate": true
+                ]
+            ]
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
+            if(results.success) {
+                rtn.results = results.headers?.Location
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("listVaults error: ${e}", e)
+        }
+        return rtn
+    }
+
+    private getAzureProxy(Cloud cloud) {
         if(cloud.apiProxy) {
             def networkProxy = new NetworkProxy(
                     proxyHost: cloud.apiProxy?.proxyHost,
