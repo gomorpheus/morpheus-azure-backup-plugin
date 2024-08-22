@@ -9,7 +9,6 @@ import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.NetworkProxy
 import groovy.util.logging.Slf4j
 
-
 @Slf4j
 class ApiService {
     MorpheusContext morpheusContext
@@ -54,7 +53,7 @@ class ApiService {
     }
 
     static buildHeaders(Map headers, String token, Map opts) {
-        headers = (headers ?: [:]) + ['Content-Type':'application/json;']
+        headers = (headers ?: [:]) + ['Content-Type':'application/json']
         if(token)
             headers['Authorization'] = (opts.authType ?: 'Bearer') + ' ' + token
         return headers
@@ -149,7 +148,7 @@ class ApiService {
             HttpApiClient client = new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig)?.token
-            def apiPath = '/subscriptions/' + authConfig.subscriberId + '/resourceGroups/' + opts.resourceGroup + '/providers/Microsoft.RecoveryServices/vaults'
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults"
             def apiVersion = '2023-04-01'
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])

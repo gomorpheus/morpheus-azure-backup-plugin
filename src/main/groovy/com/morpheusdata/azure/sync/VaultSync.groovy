@@ -93,7 +93,7 @@ class VaultSync {
 
         if(adds) {
             log.debug "adding backup servers: ${adds}"
-            def success =  morpheusContext.async.referenceData.create(adds).blockingGet()
+            def success =  morpheusContext.async.referenceData.bulkCreate(adds).blockingGet()
             if(!success) {
                 log.error "Error adding backup servers"
             }
@@ -102,10 +102,7 @@ class VaultSync {
 
     private deleteVault(List<ReferenceData> removeItems) {
         log.debug "deleteVault: ${removeItems}"
-        for(ReferenceData removeItem in removeItems) {
-            log.debug "removing backup server ${removeItem.name}"
-            morpheusContext.async.referenceData.remove(removeItem).blockingGet()
-        }
+        morpheusContext.async.referenceData.bulkRemove(removeItems).blockingGet()
     }
 
     private updateMatchedVaults(List<SyncTask.UpdateItem<ReferenceData, Map>> updateItems) {
