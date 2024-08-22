@@ -44,7 +44,7 @@ class AzureBackupTypeProvider extends AbstractBackupTypeProvider {
 	 */
 	@Override
 	String getName() {
-		return "Azure BackupTypeProvider"
+		return "Azure VM Backup"
 	}
 	
 	/**
