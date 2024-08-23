@@ -106,20 +106,27 @@ class VaultSync {
     }
 
     private updateMatchedVaults(List<SyncTask.UpdateItem<ReferenceData, Map>> updateItems) {
-        log.debug "updateMatchedVaults"
-        for(SyncTask.UpdateItem<ReferenceData, Map> update in updateItems) {
-            Map masterItem = update.masterItem
-            ReferenceData existingItem = update.existingItem
+        log.debug "updateMatchedVaults: ${updateItems.size()}"
+        def saveList = []
+        try {
+            for (SyncTask.UpdateItem<ReferenceData, Map> update in updateItems) {
+                Map masterItem = update.masterItem
+                ReferenceData existingItem = update.existingItem
 
-            def doSave = false
-            if(existingItem.name != masterItem.name) {
-                existingItem.name = masterItem.name
-                doSave = true
+                def doSave = false
+                if (existingItem.name != masterItem.name) {
+                    existingItem.name = masterItem.name
+                    doSave = true
+                }
+                if (doSave == true) {
+                    saveList << existingItem
+                }
             }
-            if(doSave == true) {
-                log.debug "updating backup server!! ${existingItem.name}"
-                morpheusContext.async.referenceData.save(existingItem).blockingGet()
+            if (saveList) {
+                morpheusContext.async.referenceData.bulkSave(saveList).blockingGet()
             }
+        } catch (e) {
+            log.error("updateMatchedVaults error: ${e}", e)
         }
     }
 }

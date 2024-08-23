@@ -99,25 +99,32 @@ class PolicySync {
     }
 
     private updateMatchedBackupJobs(List<SyncTask.UpdateItem<BackupJob, Map>> updateItems) {
-        log.debug "updateMatchedBackupJobs"
-        for(SyncTask.UpdateItem<BackupJob, Map> update in updateItems) {
-            Map masterItem = update.masterItem
-            BackupJob existingItem = update.existingItem
+        log.debug "updateMatchedBackupJobs: ${updateItems.size()}"
+        def saveList = []
+        try {
+            for (SyncTask.UpdateItem<BackupJob, Map> update in updateItems) {
+                Map masterItem = update.masterItem
+                BackupJob existingItem = update.existingItem
 
-            Boolean doSave = false
-            if (existingItem.name != masterItem.name) {
-                existingItem.name = masterItem.name
-                doSave = true
+                Boolean doSave = false
+                if (existingItem.name != masterItem.name) {
+                    existingItem.name = masterItem.name
+                    doSave = true
+                }
+                def cronExpression = parseCronExpression(masterItem.properties.schedulePolicy)
+                if (existingItem.cronExpression != cronExpression) {
+                    existingItem.cronExpression = cronExpression
+                    doSave = true
+                }
+                if (doSave == true) {
+                    saveList << existingItem
+                }
             }
-            def cronExpression = parseCronExpression(masterItem.properties.schedulePolicy)
-            if (existingItem.cronExpression != cronExpression) {
-                existingItem.cronExpression = cronExpression
-                doSave = true
+            if(saveList) {
+                morpheusContext.async.backupJob.bulkSave(saveList).blockingGet()
             }
-            if (doSave == true) {
-                log.debug "updating backup job!! ${existingItem.name}"
-                morpheusContext.async.backupJob.save(existingItem).blockingGet()
-            }
+        } catch (e) {
+            log.error("updateMatchedBackupJobs error: ${e}", e)
         }
     }
 
