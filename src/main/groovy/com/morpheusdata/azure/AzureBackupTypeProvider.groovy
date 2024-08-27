@@ -142,7 +142,20 @@ class AzureBackupTypeProvider extends AbstractBackupTypeProvider {
 	 */
 	@Override
 	Collection<OptionType> getOptionTypes() {
-		return new ArrayList<OptionType>()
+		return new ArrayList<OptionType>([
+			new OptionType(
+					code:'backupProviderType.azure.resourceGroup', inputType: OptionType.InputType.SELECT, name:'Resource Group', category:'backupProviderType.azure', noBlank: true,
+					fieldName:'resourceGroup', fieldCode: 'gomorpheus.label.resourceGroup', fieldLabel:'Resource Group', fieldContext:'config', fieldSet:'', fieldGroup:'Options',
+					required:true, enabled:true, editable:true, global:false, optionSource: 'azureZonePools', optionSourceType:'azure',
+					placeHolder:null, helpBlock:'', defaultValue:null, custom:false, displayOrder:1, fieldClass:null, fieldSize:15
+			),
+			new OptionType(
+					code:'backupProviderType.azure.vault', inputType: OptionType.InputType.SELECT, name:'Vault', category:'backupProviderType.azure', noBlank: true,
+					fieldName:'vault', fieldCode: 'gomorpheus.label.vault', fieldLabel:'Vault', fieldContext:'config', fieldSet:'', fieldGroup:'Options',
+					required:true, enabled:true, editable:true, global:false, optionSource: 'azureBackupVaults', optionSourceType:'azureBackup',
+					placeHolder:null, helpBlock:'', defaultValue:null, custom:false, displayOrder:2, fieldClass:null, fieldSize:15, dependsOnCode: 'backupProviderType.azure.resourceGroup'
+			)
+		])
 	}
 	
 	/**
