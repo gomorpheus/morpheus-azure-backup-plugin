@@ -46,7 +46,7 @@ class VaultSync {
                 def listResults = apiService.listVaults(authConfig, [resourceGroup: resourceGroup.externalId])
                 if(listResults.success) {
                     def cloudItems = listResults.results.value
-                    def objCategory = "azure.backup.vault.${backupProviderModel.id}"
+                    def objCategory = "${backupProviderModel.type.code}.backup.vault.${backupProviderModel.id}"
                     Observable<ReferenceData> existingItems = morpheusContext.async.referenceData.list(new DataQuery().withFilters([
                             new DataFilter('category', objCategory),
                             new DataFilter('account.id', backupProviderModel.account.id),

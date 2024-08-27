@@ -71,7 +71,7 @@ class VaultDatasetProvider extends AbstractDatasetProvider<ReferenceData, String
 
             if(cloud && resourceGroup && backupProvider) {
                 return morpheusContext.async.referenceData.list(new DataQuery().withFilters(
-                        new DataFilter('category', "azure.backup.vault.${backupProvider.id}"),
+                        new DataFilter('category', "${backupProvider.type.code}.backup.vault.${backupProvider.id}"),
                         new DataFilter('account.id', backupProvider.account.id),
                         new DataFilter('refType', 'ComputeZonePool'),
                         new DataFilter('refId', resourceGroup.id),

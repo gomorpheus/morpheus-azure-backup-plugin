@@ -35,7 +35,7 @@ class PolicySync {
         try {
             log.debug("PolicySync execute")
             Map authConfig = apiService.getAuthConfig(backupProviderModel)
-            def objCategory = "azure.backup.vault.${backupProviderModel.id}"
+            def objCategory = "${backupProviderModel.type.code}.backup.vault.${backupProviderModel.id}"
             List<ReferenceData> vaults = morpheusContext.services.referenceData.list(new DataQuery().withFilters([
                 new DataFilter('category', objCategory),
                 new DataFilter('account.id', backupProviderModel.account.id),
