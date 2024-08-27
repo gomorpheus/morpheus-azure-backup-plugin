@@ -83,8 +83,8 @@ class VaultSync {
         def adds = []
         for(cloudItem in itemsToAdd) {
             def addConfig = [account:backupProviderModel.account, code:objCategory + '.' + cloudItem.name, category:objCategory,
-                             name:cloudItem.name, keyValue:cloudItem.name, value:cloudItem.name, externalId:cloudItem.id, type: 'string',
-                             refType: 'ComputeZonePool', refId: resourceGroup.id]
+                             name:cloudItem.name, keyValue:cloudItem.name, value:cloudItem.name, externalId:cloudItem.name,
+                             internalId:cloudItem.id, type: 'string', refType: 'ComputeZonePool', refId:resourceGroup.id]
 
             def add = new ReferenceData(addConfig)
             add.setConfigMap(cloudItem)
