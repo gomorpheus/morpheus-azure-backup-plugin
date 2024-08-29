@@ -42,7 +42,6 @@ class ApiService {
                 subscriberId:AzureBackupUtility.getAzureSubscriberId(cloud),
                 identityPath:AzureBackupUtility.getAzureIdentityPath(cloud),
                 tenantId:AzureBackupUtility.getAzureTenantId(cloud),
-                resourceGroup:AzureBackupUtility.getAzureResourceGroup(cloud),
                 username:AzureBackupUtility.getAzureClientId(cloud),
                 password:AzureBackupUtility.getAzureClientSecret(cloud),
                 networkProxy: getAzureProxy(cloud) ?: morpheusContext.services.setting.getGlobalNetworkProxy(),
@@ -170,7 +169,7 @@ class ApiService {
             HttpApiClient client = new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig)?.token
-            def apiPath = opts.vault.externalId + '/backupPolicies'
+            def apiPath = opts.vault?.internalId + '/backupPolicies'
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion, $filter: "backupManagementType eq 'AzureIaasVM'"]])
@@ -204,6 +203,27 @@ class ApiService {
             }
         } catch (e) {
             log.error("cacheProtectableVms error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static getAsyncOpertationStatus(Map authConfig, Map opts) {
+        def rtn = [success: false]
+        try {
+            HttpApiClient client = new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers])
+
+            def results = client.callJsonApi(opts.url, null, null, null, requestOpts, 'GET')
+            if(results.success) {
+                rtn.results = results.data
+                rtn.statusCode = results.statusCode
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("getAsyncOpertationStatus error: ${e}", e)
         }
         return rtn
     }
@@ -263,7 +283,6 @@ class ApiService {
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
 
-            // need to create body
             def body = [
                 properties: [
                     protectedItemType: 'Microsoft.Compute/virtualMachines',
@@ -277,6 +296,8 @@ class ApiService {
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
             }
         } catch (e) {
             log.error("listVaults error: ${e}", e)
@@ -319,7 +340,6 @@ class ApiService {
             HttpApiClient client = new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig)?.token
-            // externalId will have all this instead of bulding
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
