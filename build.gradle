@@ -6,7 +6,7 @@ buildscript {
     }
     dependencies {
         classpath "com.github.johnrengelman:shadow:8.1.1"
-        classpath "com.morpheusdata:morpheus-plugin-gradle:$morpheusApiVersion"
+        classpath "com.morpheusdata:morpheus-plugin-gradle:$morpheusGradleVersion"
         classpath "com.bertramlabs.plugins:asset-pipeline-gradle:$assetPipelineVersion"
     }
 }
@@ -59,6 +59,7 @@ dependencies {
 	testImplementation "org.spockframework:spock-core"
 	testImplementation "org.spockframework:spock-junit4"  // you can remove this if your code does not rely on old JUnit 4 rules
 	testImplementation 'cglib:cglib-nodep:3.2.12'
+	testImplementation "com.morpheusdata:morpheus-plugin-api:$morpheusApiVersion"
 }
 
 
