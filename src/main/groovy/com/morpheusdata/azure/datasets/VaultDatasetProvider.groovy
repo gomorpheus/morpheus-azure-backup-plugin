@@ -50,8 +50,7 @@ class VaultDatasetProvider extends AbstractDatasetProvider<ReferenceData, String
         log.debug("vaults: ${datasetQuery.parameters}")
         def account = datasetQuery.user.account
         Long cloudId = datasetQuery.get("zoneId")?.toLong()
-        String resourceGroupExternalId = datasetQuery.get("config.resourceGroup")
-
+        String resourceGroupExternalId = datasetQuery.get("backup.config.resourceGroup")
         if(cloudId && resourceGroupExternalId) {
             def backupProvider
             def cloud = morpheus.async.cloud.get(cloudId).blockingGet()

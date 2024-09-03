@@ -89,13 +89,13 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 * The backup provider supports creating new jobs.
 	 */
 	@Override
-	public Boolean getHasCreateJob() { return true; }
+	public Boolean getHasCreateJob() { return false; }
 
 	/**
 	 * The backup provider supports cloning a job from an existing job.
 	 */
 	@Override
-	public Boolean getHasCloneJob() { return true; }
+	public Boolean getHasCloneJob() { return false; }
 
 	/**
 	 * The backup provider can add a workload backup to an existing job.
