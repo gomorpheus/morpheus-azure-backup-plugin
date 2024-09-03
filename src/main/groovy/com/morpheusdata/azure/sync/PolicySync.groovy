@@ -54,7 +54,7 @@ class PolicySync {
                     }.onUpdate { List<SyncTask.UpdateItem<BackupJob, Map>> updateItems ->
                         updateMatchedBackupJobs(updateItems)
                     }.onAdd { itemsToAdd ->
-                        addMissingBackupJobs(itemsToAdd)
+                        addMissingBackupJobs(itemsToAdd, vault)
                     }.withLoadObjectDetailsFromFinder { List<SyncTask.UpdateItemDto<BackupJobIdentityProjection, Map>> updateItems ->
                         return morpheusContext.async.backupJob.list( new DataQuery(backupProviderModel.account).withFilter("id", 'in', updateItems.collect { it.existingItem.id }))
                     }.start()
@@ -67,7 +67,7 @@ class PolicySync {
         }
     }
 
-    private addMissingBackupJobs(itemsToAdd) {
+    private addMissingBackupJobs(itemsToAdd, vault) {
         log.debug "addMissingBackupJobs: ${itemsToAdd}"
 
         def adds = []
@@ -75,12 +75,12 @@ class PolicySync {
         for(cloudItem in itemsToAdd) {
             def addConfig = [
                     account: backupProviderModel.account, backupProvider: backupProviderModel, code: objCategory + '.' + cloudItem.name,
-                    category: objCategory, name: cloudItem.name, externalId: cloudItem.id, source: 'azure',
+                    category: objCategory, name: cloudItem.name, externalId: cloudItem.name, internalId: cloudItem.id, source: 'azure',
                     enabled: 'true', cronExpression: parseCronExpression(cloudItem.properties.schedulePolicy)
             ]
 
             def add = new BackupJob(addConfig)
-            add.setConfigMap(cloudItem)
+            add.setConfigMap([cloudItem: cloudItem, vault: vault.name])
             adds << add
         }
 

@@ -33,7 +33,7 @@ class VaultSync {
 
             def cloudId = backupProviderModel.getConfigProperty('cloudId')
             def poolCategory = "azure.resourcepool.${cloudId}"
-            def resourceGroups = morpheusContext.services.cloud.pool.listIdentityProjections(
+            def resourceGroups = morpheusContext.services.cloud.pool.list(
                     new DataQuery().withFilters(
                             new DataFilter<String>("refType", 'ComputeZone'),
                             new DataFilter<Long>("refId", cloudId as Long),
@@ -87,7 +87,7 @@ class VaultSync {
                              internalId:cloudItem.id, type: 'string', refType: 'ComputeZonePool', refId:resourceGroup.id]
 
             def add = new ReferenceData(addConfig)
-            add.setConfigMap(cloudItem)
+            add.setConfigMap(cloudItem: cloudItem, resourceGroup: resourceGroup.name)
             adds << add
         }
 
