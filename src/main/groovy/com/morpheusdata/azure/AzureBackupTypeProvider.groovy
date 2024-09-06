@@ -165,7 +165,7 @@ class AzureBackupTypeProvider extends AbstractBackupTypeProvider {
 	@Override
 	AzureBackupExecutionProvider getExecutionProvider() {
 		if(!this.executionProvider) {
-			this.executionProvider = new AzureBackupExecutionProvider(getPlugin())
+			this.executionProvider = new AzureBackupExecutionProvider(getPlugin(), getMorpheus())
 		}
 		return this.executionProvider
 	}

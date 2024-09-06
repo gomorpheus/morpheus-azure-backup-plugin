@@ -4,11 +4,13 @@ import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupExecutionProvider
 import com.morpheusdata.core.backup.response.BackupExecutionResponse
+import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.Backup
 import com.morpheusdata.model.BackupResult
 import com.morpheusdata.model.Cloud
 import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.response.ServiceResponse
+import com.morpheusdata.azure.services.ApiService
 import groovy.util.logging.Slf4j
 
 @Slf4j
@@ -16,10 +18,12 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 
 	Plugin plugin
 	MorpheusContext morpheusContext
+	ApiService apiService
 
 	AzureBackupExecutionProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		this.plugin = plugin
 		this.morpheusContext = morpheusContext
+		this.apiService = new ApiService(morpheusContext)
 	}
 	
 	/**
@@ -41,6 +45,14 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	 */
 	@Override
 	ServiceResponse configureBackup(Backup backup, Map config, Map opts) {
+		log.debug("configureBackup: {}, {}, {}", backup, config, opts)
+
+		if(config.config?.resourceGroup) {
+			backup.setConfigProperty("resourceGroup", config.config.resourceGroup)
+		}
+		if(config.config?.vault) {
+			backup.setConfigProperty("vault", config.config?.vault)
+		}
 		return ServiceResponse.success(backup)
 	}
 
@@ -71,7 +83,79 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	 */
 	@Override
 	ServiceResponse createBackup(Backup backup, Map opts) {
-		return ServiceResponse.success()
+		log.debug("createBackup {}:{} to job {} with opts: {}", backup.id, backup.name, backup.backupJob.id, opts)
+		ServiceResponse rtn = ServiceResponse.prepare()
+		try {
+			def backupProvider = backup.backupProvider
+			def authConfig = apiService.getAuthConfig(backupProvider)
+			def backupJob = backup.backupJob
+
+			def server
+			if(backup.computeServerId) {
+				server = morpheusContext.services.computeServer.get(backup.computeServerId)
+			} else {
+				def workload = morpheusContext.services.workload.get(backup.containerId)
+				server = morpheusContext.services.computeServer.get(workload?.server.id)
+			}
+			if(server) {
+				def resourceGroup = opts.config?.resourceGroup ?: backup.getConfigProperty('resourceGroup')
+				def vault = opts.config?.vault ?: backup.getConfigProperty('vault')
+
+				// trigger azure vm cache refresh
+				HttpApiClient client = new HttpApiClient()
+				def cacheResponse = apiService.triggerCacheProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+				if(cacheResponse.success == true) {
+					sleep(1500)
+					def attempts = 0
+					def keepGoing = true
+					while(keepGoing) {
+						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cacheResponse.results, client: client])
+						// 204 means async task is done
+						if((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 9) {
+							keepGoing = false
+						}
+
+						if(keepGoing) {
+							sleep(1500)
+							attempts++
+						}
+					}
+				}
+
+				def vmName
+				def vmId
+				def protectableVmsResponse = apiService.listProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+				if(protectableVmsResponse.success == true) {
+					protectableVmsResponse.results?.value?.each { protectableVm ->
+						if(protectableVm.properties.resourceGroup == resourceGroup && protectableVm.properties.friendlyName == server.externalId){
+							vmName = protectableVm.name
+							vmId = protectableVm.properties.virtualMachineId
+						}
+					}
+				}
+
+				// if vm has been protected before it will be under protectedVms
+				if (!vmName) {
+					log.error("protectable vm not found for: ${server.externalId}")
+					rtn.msg = "vmName not found"
+					return rtn
+				}
+
+				def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, vmName: vmName, vmId: vmId, policyId: backupJob.internalId, client: client])
+				if(results.success == true) {
+					rtn.success = true
+				} else if (results.error?.message) {
+					log.error("enableProtection error: ${results.error}")
+					rtn.msg = results.error.message
+				} else {
+					log.error("enableProtection error: ${results}")
+					rtn.msg = "Error Creating Backup"
+				}
+			}
+		} catch(e) {
+			log.error("createBackup error: ${e}", e)
+		}
+		return rtn
 	}
 
 	/**

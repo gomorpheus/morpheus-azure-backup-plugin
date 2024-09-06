@@ -58,7 +58,7 @@ class ApiService {
         return headers
     }
 
-    static getApiToken(Map authConfig) {
+    static getApiToken(Map authConfig, Map opts) {
         def rtn = [success:false]
         def requestToken = true
         if(authConfig.token) {
@@ -81,7 +81,7 @@ class ApiService {
         }
         //if need a new one
         if(requestToken == true) {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def apiUrl = authConfig.identityUrl
             def apiPath = authConfig.identityPath
@@ -122,9 +122,9 @@ class ApiService {
     static listSubscriptions(Map authConfig, Map opts) {
         def rtn = [success:false]
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = '/subscriptions'
             def apiVersion = authConfig.cloudType.code == 'azure' ? '2015-01-01' : '2018-05-01'
             def headers = buildHeaders(null, token, opts)
@@ -144,9 +144,9 @@ class ApiService {
     static listVaults(Map authConfig, Map opts) {
         def rtn = [success:false]
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults"
             def apiVersion = '2023-04-01'
             def headers = buildHeaders(null, token, opts)
@@ -166,9 +166,9 @@ class ApiService {
     static listPolicies(Map authConfig, Map opts) {
         def rtn = [success: false]
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = opts.vault?.internalId + '/backupPolicies'
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
@@ -188,9 +188,9 @@ class ApiService {
     static triggerCacheProtectableVms(Map authConfig, Map opts) {
         def rtn = [success: false]
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/refreshContainers"
             def apiVersion = '2016-12-01'
             def headers = buildHeaders(null, token, opts)
@@ -210,9 +210,9 @@ class ApiService {
     static getAsyncOpertationStatus(Map authConfig, Map opts) {
         def rtn = [success: false]
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers])
 
@@ -231,9 +231,9 @@ class ApiService {
     static listProtectableVms(Map authConfig, Map opts) {
         def rtn = [success: false]
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupProtectableItems"
             def apiVersion = '2016-12-01'
             def headers = buildHeaders(null, token, opts)
@@ -253,9 +253,9 @@ class ApiService {
     static listProtectedVms(Map authConfig, Map opts) {
         def rtn = [success: false]
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupProtectedItems"
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
@@ -276,9 +276,9 @@ class ApiService {
         def rtn = [success: false]
 
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
@@ -309,9 +309,9 @@ class ApiService {
         def rtn = [success: false]
 
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure//protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}/backup"
             def apiVersion = '2016-12-01'
             def headers = buildHeaders(null, token, opts)
@@ -337,9 +337,9 @@ class ApiService {
         def rtn = [success: false]
 
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
@@ -367,9 +367,9 @@ class ApiService {
         def rtn = [success: false]
 
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
 
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
             def apiVersion = '2019-05-13'
@@ -392,9 +392,9 @@ class ApiService {
         def rtn = [success: false]
 
         try {
-            HttpApiClient client = new HttpApiClient()
+            HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
-            def token = authConfig.token ?: getApiToken(authConfig)?.token
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
 
             def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
             def apiVersion = '2019-05-13'
