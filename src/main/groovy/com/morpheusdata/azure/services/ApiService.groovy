@@ -180,7 +180,7 @@ class ApiService {
                 rtn.success = true
             }
         } catch (e) {
-            log.error("listVaults error: ${e}", e)
+            log.error("listPolicies error: ${e}", e)
         }
         return rtn
     }
@@ -245,7 +245,7 @@ class ApiService {
                 rtn.success = true
             }
         } catch (e) {
-            log.error("listVaults error: ${e}", e)
+            log.error("listProtectableVms error: ${e}", e)
         }
         return rtn
     }
@@ -267,7 +267,7 @@ class ApiService {
                 rtn.success = true
             }
         } catch (e) {
-            log.error("listVaults error: ${e}", e)
+            log.error("listProtectedVms error: ${e}", e)
         }
         return rtn
     }
@@ -279,7 +279,7 @@ class ApiService {
             HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
-            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/${opts.containerName}/protectedItems/${opts.protectedItemName}"
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
 
@@ -295,12 +295,13 @@ class ApiService {
             def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
             if(results.success) {
                 rtn.results = results.headers?.Location
+                rtn.statusCode = results.statusCode
                 rtn.success = true
             } else {
                 rtn.error = results.data?.error
             }
         } catch (e) {
-            log.error("listVaults error: ${e}", e)
+            log.error("enableProtection error: ${e}", e)
         }
         return rtn
     }
@@ -312,7 +313,7 @@ class ApiService {
             HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
-            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure//protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}/backup"
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/${opts.containerName}/protectedItems/${opts.protectedItemName}/backup"
             def apiVersion = '2016-12-01'
             def headers = buildHeaders(null, token, opts)
             def body = [
@@ -325,6 +326,7 @@ class ApiService {
             def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
             if(results.success) {
                 rtn.results = results.headers?.Location
+                rtn.statusCode = results.statusCode
                 rtn.success = true
             }
         } catch (e) {
@@ -340,7 +342,7 @@ class ApiService {
             HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
-            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/${opts.containerName}/protectedItems/${opts.protectedItemName}"
             def apiVersion = '2024-04-01'
             def headers = buildHeaders(null, token, opts)
             def body = [
@@ -355,10 +357,11 @@ class ApiService {
             def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
             if(results.success) {
                 rtn.results = results.headers?.Location
+                rtn.statusCode = results.statusCode
                 rtn.success = true
             }
         } catch (e) {
-            log.error("removeBackup error: ${e}", e)
+            log.error("removeProtection error: ${e}", e)
         }
         return rtn
     }
@@ -370,8 +373,7 @@ class ApiService {
             HttpApiClient client = opts.client ?: new HttpApiClient()
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
-
-            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/${opts.containerName}/protectedItems/${opts.protectedItemName}"
             def apiVersion = '2019-05-13'
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
@@ -379,10 +381,11 @@ class ApiService {
             def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'DELETE')
             if(results.success) {
                 rtn.results = results.headers?.Location
+                rtn.statusCode = results.statusCode
                 rtn.success = true
             }
         } catch (e) {
-            log.error("listVaults error: ${e}", e)
+            log.error("deleteBackup error: ${e}", e)
         }
         return rtn
     }
@@ -396,7 +399,7 @@ class ApiService {
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
 
-            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/IaasVMContainer;${opts.vmName}/protectedItems/VM;${opts.vmName}"
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/${opts.containerName}/protectedItems/${opts.protectedItemName}"
             def apiVersion = '2019-05-13'
             def headers = buildHeaders(null, token, opts)
             def body = [
@@ -412,10 +415,11 @@ class ApiService {
             def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
             if(results.success) {
                 rtn.results = results.headers?.Location
+                rtn.statusCode = results.statusCode
                 rtn.success = true
             }
         } catch (e) {
-            log.error("listVaults error: ${e}", e)
+            log.error("undoDeleteBackup error: ${e}", e)
         }
         return rtn
     }

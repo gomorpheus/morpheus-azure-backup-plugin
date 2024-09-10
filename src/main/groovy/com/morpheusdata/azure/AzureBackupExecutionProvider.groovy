@@ -122,26 +122,28 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 					}
 				}
 
-				def vmName
+				def protectedItemName
+				def containerName
 				def vmId
 				def protectableVmsResponse = apiService.listProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
 				if(protectableVmsResponse.success == true) {
 					protectableVmsResponse.results?.value?.each { protectableVm ->
-						if(protectableVm.properties.resourceGroup == resourceGroup && protectableVm.properties.friendlyName == server.externalId){
-							vmName = protectableVm.name
+						if(protectableVm.properties.friendlyName == server.externalId){
+							protectedItemName = 'VM;'+ protectableVm.name
+							containerName = 'IaasVMContainer;' + protectableVm.name
 							vmId = protectableVm.properties.virtualMachineId
 						}
 					}
 				}
 
 				// if vm has been protected before it will be under protectedVms
-				if (!vmName) {
+				if (!protectedItemName) {
 					log.error("protectable vm not found for: ${server.externalId}")
-					rtn.msg = "vmName not found"
+					rtn.msg = "protectable vm not found"
 					return rtn
 				}
 
-				def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, vmName: vmName, vmId: vmId, policyId: backupJob.internalId, client: client])
+				def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId, client: client])
 				if(results.success == true) {
 					rtn.success = true
 				} else if (results.error?.message) {
@@ -168,7 +170,61 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	 */
 	@Override
 	ServiceResponse deleteBackup(Backup backup, Map opts) {
-		return ServiceResponse.success()
+		log.debug("deleteBackup {}:{} with opts: {}", backup.id, backup.name, opts)
+		ServiceResponse rtn = ServiceResponse.prepare()
+		try {
+			def backupProvider = backup.backupProvider
+			def authConfig = apiService.getAuthConfig(backupProvider)
+			def backupJob = backup.backupJob
+
+			if(backupJob) {
+
+				def server
+				if (backup.computeServerId) {
+					server = morpheusContext.services.computeServer.get(backup.computeServerId)
+				} else {
+					def workload = morpheusContext.services.workload.get(backup.containerId)
+					server = morpheusContext.services.computeServer.get(workload?.server.id)
+				}
+
+				def protectedItemName
+				def containerName
+				def vmId
+				def resourceGroup = backup.getConfigProperty('resourceGroup')
+				def vault = backup.getConfigProperty('vault')
+				def client = new HttpApiClient()
+				def protectedVmsResponse = apiService.listProtectedVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+				if (protectedVmsResponse.success == true) {
+					protectedVmsResponse.results?.value?.each { protectedVm ->
+						if (protectedVm.properties.friendlyName == server.externalId) {
+							protectedItemName = protectedVm.name
+							containerName = 'IaasVMContainer;' + protectedVm.properties.containerName
+							vmId = protectedVm.properties.virtualMachineId
+						}
+					}
+				}
+
+				if(!protectedItemName) {
+					log.error("protected vm not found for: ${server.externalId}")
+					rtn.msg = "protected vm not found"
+					return rtn
+				}
+
+				def results = apiService.deleteBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId, client: client])
+				if (results.success == true && results.statusCode == '202') {
+					rtn.success = true
+				} else if (results.error?.message) {
+					log.error("deleteBackup error: ${results.error}")
+					rtn.msg = results.error.message
+				} else {
+					log.error("deleteBackup error: ${results}")
+					rtn.msg = "Error Deleting Backup"
+				}
+			}
+		} catch(e) {
+			log.error("deleteBackup error: ${e}", e)
+		}
+		return rtn
 	}
 
 	/**
