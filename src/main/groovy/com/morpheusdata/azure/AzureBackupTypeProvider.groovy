@@ -152,8 +152,21 @@ class AzureBackupTypeProvider extends AbstractBackupTypeProvider {
 			new OptionType(
 					code:'backupProviderType.azure.vault', inputType: OptionType.InputType.SELECT, name:'Vault', category:'backupProviderType.azure', noBlank: true,
 					fieldName:'vault', fieldCode: 'gomorpheus.label.vault', fieldLabel:'Vault', fieldContext:'backup.config', fieldSet:'', fieldGroup:'Options',
-					required:true, enabled:true, editable:true, global:false, optionSource: 'azureBackupVaults', optionSourceType:'azureBackup',
+					required:true, enabled:true, editable:true, global:false, optionSource: 'azureBackup.azureBackupVaults',
 					placeHolder:null, helpBlock:'', defaultValue:null, custom:false, displayOrder:2, fieldClass:null, fieldSize:15, dependsOnCode: 'backupProviderType.azure.resourceGroup'
+			),
+			new OptionType(
+					code:'backupProviderType.azure.backupJobType', inputType: OptionType.InputType.SELECT, name:'Backup Job Type', category:'backupProviderType.azure', noBlank: true,
+					fieldName:'jobAction', fieldCode: 'gomorpheus.label.backupJobType', fieldLabel:'Backup Job Type', fieldContext:'backup', fieldSet:'', fieldGroup:'Options',
+					required:true, enabled:true, editable:true, global:false, optionSource: 'backupJobActions',
+					placeHolder:null, helpBlock:'', defaultValue:null, custom:false, displayOrder:3, fieldClass:null, fieldSize:15, dependsOnCode: 'backupProvider'
+
+			),
+			new OptionType(
+				code:'backupProviderType.azure.backupJob', inputType: OptionType.InputType.TYPEAHEAD, name:'Backup Job', category:'backup.azure', noBlank: true,
+				fieldName:'job', fieldCode: 'gomorpheus.label.backupJob', fieldLabel:'Backup Job', fieldContext:'backup', fieldSet:'', fieldGroup:'Options',
+				required:true, enabled:true, editable:true, global:false, optionSource: 'azureBackup.azureBackupJobs',
+				placeHolder:null, helpBlock:'', defaultValue:null, custom:false, displayOrder:4, fieldSize:15, dependsOnCode: 'backupProviderType.azure.vault',
 			)
 		])
 	}
