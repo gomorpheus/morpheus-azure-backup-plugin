@@ -15,6 +15,7 @@
 */
 package com.morpheusdata.azure
 
+import com.morpheusdata.azure.datasets.BackupJobDatasetProvider
 import com.morpheusdata.azure.datasets.VaultDatasetProvider
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
@@ -31,6 +32,7 @@ class AzureBackupPlugin extends Plugin {
         this.setName("Azure Backup")
         this.registerProvider(new AzureBackupProvider(this,this.morpheus))
         this.registerProvider(new VaultDatasetProvider(this,this.morpheus))
+        this.registerProvider(new BackupJobDatasetProvider(this,this.morpheus))
     }
 
     /**

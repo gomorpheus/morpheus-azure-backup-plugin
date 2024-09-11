@@ -325,7 +325,7 @@ class ApiService {
 
             def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
             if(results.success) {
-                rtn.results = results.headers?.Location
+                rtn.results = results.headers?.'Azure-AsyncOperation'
                 rtn.statusCode = results.statusCode
                 rtn.success = true
             }

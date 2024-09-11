@@ -48,7 +48,7 @@ class PolicySync {
                     Observable<BackupJobIdentityProjection> existingItems = morpheusContext.async.backupJob.listIdentityProjections(backupProviderModel)
                     SyncTask<BackupJobIdentityProjection, ArrayList<Map>, BackupJob> syncTask = new SyncTask<>(existingItems, cloudItems)
                     syncTask.addMatchFunction { BackupJobIdentityProjection domainObject, Map cloudItem ->
-                        domainObject.externalId == cloudItem.id
+                        domainObject.externalId == cloudItem.name
                     }.onDelete { List<BackupJobIdentityProjection> removeItems ->
                         deleteBackupJobs(removeItems)
                     }.onUpdate { List<SyncTask.UpdateItem<BackupJob, Map>> updateItems ->
