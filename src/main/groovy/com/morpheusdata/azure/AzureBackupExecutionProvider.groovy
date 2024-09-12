@@ -1,5 +1,6 @@
 package com.morpheusdata.azure
 
+import com.morpheusdata.azure.util.AzureBackupUtility
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupExecutionProvider
@@ -12,6 +13,8 @@ import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.azure.services.ApiService
 import groovy.util.logging.Slf4j
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @Slf4j
 class AzureBackupExecutionProvider implements BackupExecutionProvider {
@@ -71,6 +74,7 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	 */
 	@Override
 	ServiceResponse validateBackup(Backup backup, Map config, Map opts) {
+		log.debug("validateBackup: {}, {}, {}", backup, config, opts)
 		return ServiceResponse.success(backup)
 	}
 
@@ -144,7 +148,7 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				}
 
 				def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId, client: client])
-				if(results.success == true) {
+				if(results.success == true && results.statusCode == '202') {
 					rtn.success = true
 				} else if (results.error?.message) {
 					log.error("enableProtection error: ${results.error}")
@@ -278,7 +282,85 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	 */
 	@Override
 	ServiceResponse<BackupExecutionResponse> executeBackup(Backup backup, BackupResult backupResult, Map executionConfig, Cloud cloud, ComputeServer computeServer, Map opts) {
-		return ServiceResponse.success(new BackupExecutionResponse(backupResult))
+		log.debug("executeBackup: {}", backup)
+		ServiceResponse<BackupExecutionResponse> rtn = ServiceResponse.prepare(new BackupExecutionResponse(backupResult))
+		if(!backup.backupProvider.enabled) {
+			rtn.error = "Azure backup provider is disabled"
+			return rtn
+		}
+		try {
+			def backupProvider = backup.backupProvider
+			def authConfig = apiService.getAuthConfig(backupProvider)
+
+			def server
+			if(backup.computeServerId) {
+				server = morpheusContext.services.computeServer.get(backup.computeServerId)
+			} else {
+				def workload = morpheusContext.services.workload.get(backup.containerId)
+				server = morpheusContext.services.computeServer.get(workload?.server.id)
+			}
+			log.info("executeBackup: server: ${server}")
+			if(server) {
+				def resourceGroup = backup.getConfigProperty('resourceGroup')
+				def vault = backup.getConfigProperty('vault')
+				def protectedItemName
+				def containerName
+				def vmId
+				def client = new HttpApiClient()
+				def protectedVmsResponse = apiService.listProtectedVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+				if(protectedVmsResponse.success == true) {
+					protectedVmsResponse.results?.value?.each { protectedVm ->
+						if(protectedVm.properties.friendlyName == server.externalId) {
+							protectedItemName = protectedVm.name
+							containerName = 'IaasVMContainer;' + protectedVm.properties.containerName
+							vmId = protectedVm.properties.virtualMachineId
+						}
+					}
+				}
+				if(!protectedItemName) {
+					log.error("protected vm not found for: ${server.externalId}")
+					rtn.error = "protected vm not found"
+					return rtn
+				}
+				def onDemandResults = apiService.triggerOnDemandBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backup.backupJob.internalId, client: client])
+				log.info("executeBackup: onDemandResults: ${onDemandResults}")
+				if(onDemandResults.success == true && onDemandResults.statusCode == '202') {
+					rtn.success = true
+
+					def jobId
+					sleep(1000)
+					def attempts = 0
+					def keepGoing = true
+					while(keepGoing) {
+						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: onDemandResults.results, client: client])
+
+						if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
+							keepGoing = false
+							jobId = asyncResponse.results?.properties?.jobId
+							rtn.data.backupResult.externalId = jobId
+							rtn.data.backupResult.setConfigProperty("backupJobId", jobId)
+							rtn.data.updates = true
+						}
+
+						if(keepGoing) {
+							sleep(1000)
+							attempts++
+						}
+					}
+				} else if (onDemandResults.error?.message) {
+					log.error("executeBackup error: ${onDemandResults.error}")
+					rtn.error = onDemandResults.error.message
+				} else {
+					log.error("executeBackup error: ${onDemandResults}")
+					rtn.error = "Error executing backup"
+				}
+			}
+		}
+		catch (e) {
+			log.error("executeBackup error: ${e}", e)
+		}
+		log.info("executeBackup: rtn: ${rtn}")
+		return rtn
 	}
 
 	/**
@@ -291,7 +373,63 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	 */
 	@Override
 	ServiceResponse<BackupExecutionResponse> refreshBackupResult(BackupResult backupResult) {
-		return ServiceResponse.success(new BackupExecutionResponse(backupResult))
+		log.debug("refreshBackupResult: {}", backupResult)
+		ServiceResponse<BackupExecutionResponse> rtn = ServiceResponse.prepare(new BackupExecutionResponse(backupResult))
+		def backup = backupResult.backup
+
+		if(backup.backupProvider?.enabled) {
+			def backupProvider = backup.backupProvider
+			def authConfig = apiService.getAuthConfig(backupProvider)
+			def backupJobId = backupResult.externalId ?: backupResult.getConfigProperty('backupJobId')
+			def resourceGroup = backup.getConfigProperty('resourceGroup')
+			def vault = backup.getConfigProperty('vault')
+
+			if(backupJobId) {
+				def getBackupJobResult = apiService.getBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
+				log.info("getBackupJobResult: {}", getBackupJobResult)
+				if(getBackupJobResult.success == true && getBackupJobResult.results) {
+					def backupJob = getBackupJobResult.results
+					boolean doUpdate = false
+
+					def updatedStatus = AzureBackupUtility.getBackupStatus(backupJob.properties.status)
+					if(rtn.data.backupResult.status != updatedStatus) {
+						rtn.data.backupResult.status = updatedStatus
+						doUpdate = true
+					}
+
+					def backupSize = backupJob.properties.extendedInfo?.propertyBag?.'Backup Size'
+					if(backupSize) {
+						def sizeInMb = backupSize.split(" MB")[0] as Long
+						if(rtn.data.backupResult.sizeInMb != sizeInMb) {
+							rtn.data.backupResult.sizeInMb = sizeInMb
+							doUpdate = true
+						}
+					}
+
+					if(backupJob.properties.startTime && backupJob.properties.endTime) {
+						DateTimeFormatter parser = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS'Z'");
+						def startDate = LocalDateTime.parse(backupJob.properties.startTime, parser).toDate()
+						def endDate = LocalDateTime.parse(backupJob.properties.endTime, parser).toDate()
+						if (startDate && rtn.data.backupResult.startDate != startDate) {
+							rtn.data.backupResult.startDate = startDate
+							doUpdate = true
+						}
+						if (endDate && rtn.data.backupResult.endDate != endDate) {
+							rtn.data.backupResult.endDate = endDate
+							doUpdate = true
+						}
+						def durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
+						if (rtn.data.backupResult.durationMillis != durationMillis) {
+							rtn.data.backupResult.durationMillis = durationMillis
+							doUpdate = true
+						}
+					}
+					rtn.data.updates = doUpdate
+					rtn.success = true
+				}
+			}
+		}
+		return rtn
 	}
 	
 	/**

@@ -1,5 +1,6 @@
 package com.morpheusdata.azure.util
 
+import com.morpheusdata.model.BackupResult
 import com.morpheusdata.model.Cloud
 import groovy.util.logging.Slf4j
 
@@ -91,5 +92,22 @@ class AzureBackupUtility {
         } else {
             return cloud.getConfigProperty('identityResourceUrl') ?: 'https://management.core.windows.net/'
         }
+    }
+
+    static getBackupStatus(backupSessionState) {
+        log.debug("getBackupStatus: ${backupSessionState}")
+        def status = BackupResult.Status.IN_PROGRESS.toString()
+        if (backupSessionState == "Failed") {
+            status = BackupResult.Status.FAILED.toString()
+        } else if (backupSessionState == "Completed") {
+            status = BackupResult.Status.SUCCEEDED.toString()
+        } else if (backupSessionState == "CompletedWithWarnings") {
+            status = BackupResult.Status.SUCCEEDED_WARNING.toString()
+        } else if (backupSessionState == "Cancelling") {
+            status = BackupResult.Status.CANCEL_REQUESTED.toString()
+        } else if (backupSessionState == "Cancelled") {
+            status = BackupResult.Status.CANCELLED.toString()
+        }
+        return status
     }
 }

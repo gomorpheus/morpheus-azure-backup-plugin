@@ -424,6 +424,30 @@ class ApiService {
         return rtn
     }
 
+    static getBackupJob(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = opts.client ?: new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupjobs/${opts.jobId}"
+            def apiVersion = '2019-05-13'
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
+
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            if(results.success) {
+                rtn.results = results.data
+                rtn.statusCode = results.statusCode
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("getBackupJob error: ${e}", e)
+        }
+        return rtn
+    }
+
     private getAzureProxy(Cloud cloud) {
         if(cloud.apiProxy) {
             def networkProxy = new NetworkProxy(
