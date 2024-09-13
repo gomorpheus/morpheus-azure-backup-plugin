@@ -299,7 +299,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				def workload = morpheusContext.services.workload.get(backup.containerId)
 				server = morpheusContext.services.computeServer.get(workload?.server.id)
 			}
-			log.info("executeBackup: server: ${server}")
 			if(server) {
 				def resourceGroup = backup.getConfigProperty('resourceGroup')
 				def vault = backup.getConfigProperty('vault')
@@ -323,7 +322,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 					return rtn
 				}
 				def onDemandResults = apiService.triggerOnDemandBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backup.backupJob.internalId, client: client])
-				log.info("executeBackup: onDemandResults: ${onDemandResults}")
 				if(onDemandResults.success == true && onDemandResults.statusCode == '202') {
 					rtn.success = true
 
@@ -359,7 +357,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 		catch (e) {
 			log.error("executeBackup error: ${e}", e)
 		}
-		log.info("executeBackup: rtn: ${rtn}")
 		return rtn
 	}
 
@@ -386,7 +383,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 
 			if(backupJobId) {
 				def getBackupJobResult = apiService.getBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
-				log.info("getBackupJobResult: {}", getBackupJobResult)
 				if(getBackupJobResult.success == true && getBackupJobResult.results) {
 					def backupJob = getBackupJobResult.results
 					boolean doUpdate = false
@@ -434,13 +430,33 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	
 	/**
 	 * Cancel the backup execution process without waiting for a result.
-	 * @param backupResultModel the details associated with the results of the backup execution.
+	 * @param backupResult the details associated with the results of the backup execution.
 	 * @param opts additional options.
 	 * @return a {@link ServiceResponse} indicating the success or failure of the backup execution cancellation.
 	 */
 	@Override
-	ServiceResponse cancelBackup(BackupResult backupResultModel, Map opts) {
-		return ServiceResponse.success()
+	ServiceResponse cancelBackup(BackupResult backupResult, Map opts) {
+		log.debug("cancelBackup: backupResult: {}, opts {}:", backupResult, opts)
+		ServiceResponse response = ServiceResponse.prepare()
+		if(backupResult != null) {
+			try {
+				def backup = backupResult.backup
+				def backupProvider = backup.backupProvider
+				def authConfig = apiService.getAuthConfig(backupProvider)
+				def backupJobId = backupResult.externalId ?: backupResult.getConfigProperty("backupJobId")
+				def resourceGroup = backup.getConfigProperty('resourceGroup')
+				def vault = backup.getConfigProperty('vault')
+
+				def result = apiService.cancelBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
+				log.debug("cancelBackup : result: ${result}")
+				if(result.success == true && result.statusCode == '202') {
+					response.success = true
+				}
+			} catch(e) {
+				log.error("cancelBackup error: ${e}", e)
+			}
+		}
+		return response
 	}
 
 	/**
