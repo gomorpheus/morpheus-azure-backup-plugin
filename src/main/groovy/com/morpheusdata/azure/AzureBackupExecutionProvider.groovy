@@ -151,8 +151,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			def vmId = backup.getConfigProperty('vmId')
 
 			def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId])
-//				def results = [success: false, error: [message: "dont actually backup right now"]]
-			//def results = [success: true, statusCode: '202'] // for testing
 			if(results.success == true && results.statusCode == '202') {
 				rtn.success = true
 			} else if (results.error?.message) {
@@ -191,10 +189,8 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				def vault = backup.getConfigProperty('vault')
 				def containerName = backup.getConfigProperty('containerName')
 				def protectedItemName = backup.getConfigProperty('protectedItemName')
-				def vmId = backup.getConfigProperty('vmId')
 
-				def results = apiService.deleteBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId])
-				//def results = [success: true, statusCode: '202'] // for testing
+				def results = apiService.deleteBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, policyId: backupJob.internalId])
 				if (results.success == true && results.statusCode == '202') {
 					rtn.success = true
 				} else if (results.error?.message) {
