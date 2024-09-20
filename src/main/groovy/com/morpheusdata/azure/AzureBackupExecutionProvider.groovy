@@ -50,11 +50,62 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	ServiceResponse configureBackup(Backup backup, Map config, Map opts) {
 		log.debug("configureBackup: {}, {}, {}", backup, config, opts)
 
-		if(config.config?.resourceGroup) {
-			backup.setConfigProperty("resourceGroup", config.config.resourceGroup)
+		def resourceGroup = config.config?.resourceGroup
+		backup.setConfigProperty("resourceGroup", resourceGroup)
+		def vault = config.config?.vault
+		backup.setConfigProperty("vault", vault)
+		def client = new HttpApiClient()
+		def backupProvider = backup.backupProvider
+		def authConfig = apiService.getAuthConfig(backupProvider)
+
+		def cacheResponse = apiService.triggerCacheProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+		if(cacheResponse.success == true) {
+			sleep(1500)
+			def attempts = 0
+			def keepGoing = true
+			while(keepGoing) {
+				def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cacheResponse.results, client: client])
+				// 204 means async task is done
+				if((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 20) {
+					keepGoing = false
+				}
+
+				if(keepGoing) {
+					sleep(1500)
+					attempts++
+				}
+			}
 		}
-		if(config.config?.vault) {
-			backup.setConfigProperty("vault", config.config?.vault)
+
+		def server
+		if(backup.computeServerId) {
+			server = morpheusContext.services.computeServer.get(backup.computeServerId)
+		} else {
+			def workload = morpheusContext.services.workload.get(backup.containerId)
+			server = morpheusContext.services.computeServer.get(workload?.server.id)
+		}
+
+		def protectedItemName
+		def containerName
+		def vmId
+		def protectableVmsResponse = apiService.listProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+		if(protectableVmsResponse.success == true) {
+			for (protectableVm in protectableVmsResponse.results?.value) {
+				if (protectableVm.properties.friendlyName == server.externalId) {
+					protectedItemName = 'VM;' + protectableVm.name
+					containerName = 'IaasVMContainer;' + protectableVm.name
+					vmId = protectableVm.properties.virtualMachineId
+					backup.setConfigProperty("protectedItemName", protectedItemName)
+					backup.setConfigProperty("containerName", containerName)
+					backup.setConfigProperty("vmId", vmId)
+					break
+				}
+			}
+		}
+
+		if (!protectedItemName) {
+			log.error("protectable vm not found for: ${server.externalId}")
+			return ServiceResponse.error("protectable vm not found")
 		}
 		return ServiceResponse.success(backup)
 	}
@@ -93,71 +144,25 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			def backupProvider = backup.backupProvider
 			def authConfig = apiService.getAuthConfig(backupProvider)
 			def backupJob = backup.backupJob
+			def resourceGroup = backup.getConfigProperty('resourceGroup')
+			def vault = backup.getConfigProperty('vault')
+			def protectedItemName = backup.getConfigProperty('protectedItemName')
+			def containerName = backup.getConfigProperty('containerName')
+			def vmId = backup.getConfigProperty('vmId')
 
-			def server
-			if(backup.computeServerId) {
-				server = morpheusContext.services.computeServer.get(backup.computeServerId)
+			def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId])
+//				def results = [success: false, error: [message: "dont actually backup right now"]]
+			//def results = [success: true, statusCode: '202'] // for testing
+			if(results.success == true && results.statusCode == '202') {
+				rtn.success = true
+			} else if (results.error?.message) {
+				log.error("enableProtection error: ${results.error}")
+				rtn.msg = results.error.message
 			} else {
-				def workload = morpheusContext.services.workload.get(backup.containerId)
-				server = morpheusContext.services.computeServer.get(workload?.server.id)
+				log.error("enableProtection error: ${results}")
+				rtn.msg = "Error Creating Backup"
 			}
-			if(server) {
-				def resourceGroup = opts.config?.resourceGroup ?: backup.getConfigProperty('resourceGroup')
-				def vault = opts.config?.vault ?: backup.getConfigProperty('vault')
 
-				// trigger azure vm cache refresh
-				HttpApiClient client = new HttpApiClient()
-				def cacheResponse = apiService.triggerCacheProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
-				if(cacheResponse.success == true) {
-					sleep(1500)
-					def attempts = 0
-					def keepGoing = true
-					while(keepGoing) {
-						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cacheResponse.results, client: client])
-						// 204 means async task is done
-						if((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 9) {
-							keepGoing = false
-						}
-
-						if(keepGoing) {
-							sleep(1500)
-							attempts++
-						}
-					}
-				}
-
-				def protectedItemName
-				def containerName
-				def vmId
-				def protectableVmsResponse = apiService.listProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
-				if(protectableVmsResponse.success == true) {
-					protectableVmsResponse.results?.value?.each { protectableVm ->
-						if(protectableVm.properties.friendlyName == server.externalId){
-							protectedItemName = 'VM;'+ protectableVm.name
-							containerName = 'IaasVMContainer;' + protectableVm.name
-							vmId = protectableVm.properties.virtualMachineId
-						}
-					}
-				}
-
-				// if vm has been protected before it will be under protectedVms
-				if (!protectedItemName) {
-					log.error("protectable vm not found for: ${server.externalId}")
-					rtn.msg = "protectable vm not found"
-					return rtn
-				}
-
-				def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId, client: client])
-				if(results.success == true && results.statusCode == '202') {
-					rtn.success = true
-				} else if (results.error?.message) {
-					log.error("enableProtection error: ${results.error}")
-					rtn.msg = results.error.message
-				} else {
-					log.error("enableProtection error: ${results}")
-					rtn.msg = "Error Creating Backup"
-				}
-			}
 		} catch(e) {
 			log.error("createBackup error: ${e}", e)
 		}
@@ -182,39 +187,14 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			def backupJob = backup.backupJob
 
 			if(backupJob) {
-
-				def server
-				if (backup.computeServerId) {
-					server = morpheusContext.services.computeServer.get(backup.computeServerId)
-				} else {
-					def workload = morpheusContext.services.workload.get(backup.containerId)
-					server = morpheusContext.services.computeServer.get(workload?.server.id)
-				}
-
-				def protectedItemName
-				def containerName
-				def vmId
 				def resourceGroup = backup.getConfigProperty('resourceGroup')
 				def vault = backup.getConfigProperty('vault')
-				def client = new HttpApiClient()
-				def protectedVmsResponse = apiService.listProtectedVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
-				if (protectedVmsResponse.success == true) {
-					protectedVmsResponse.results?.value?.each { protectedVm ->
-						if (protectedVm.properties.friendlyName == server.externalId) {
-							protectedItemName = protectedVm.name
-							containerName = 'IaasVMContainer;' + protectedVm.properties.containerName
-							vmId = protectedVm.properties.virtualMachineId
-						}
-					}
-				}
+				def containerName = backup.getConfigProperty('containerName')
+				def protectedItemName = backup.getConfigProperty('protectedItemName')
+				def vmId = backup.getConfigProperty('vmId')
 
-				if(!protectedItemName) {
-					log.error("protected vm not found for: ${server.externalId}")
-					rtn.msg = "protected vm not found"
-					return rtn
-				}
-
-				def results = apiService.deleteBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId, client: client])
+				def results = apiService.deleteBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId])
+				//def results = [success: true, statusCode: '202'] // for testing
 				if (results.success == true && results.statusCode == '202') {
 					rtn.success = true
 				} else if (results.error?.message) {
@@ -302,26 +282,10 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			if(server) {
 				def resourceGroup = backup.getConfigProperty('resourceGroup')
 				def vault = backup.getConfigProperty('vault')
-				def protectedItemName
-				def containerName
-				def vmId
-				def client = new HttpApiClient()
-				def protectedVmsResponse = apiService.listProtectedVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
-				if(protectedVmsResponse.success == true) {
-					protectedVmsResponse.results?.value?.each { protectedVm ->
-						if(protectedVm.properties.friendlyName == server.externalId) {
-							protectedItemName = protectedVm.name
-							containerName = 'IaasVMContainer;' + protectedVm.properties.containerName
-							vmId = protectedVm.properties.virtualMachineId
-						}
-					}
-				}
-				if(!protectedItemName) {
-					log.error("protected vm not found for: ${server.externalId}")
-					rtn.error = "protected vm not found"
-					return rtn
-				}
-				def onDemandResults = apiService.triggerOnDemandBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backup.backupJob.internalId, client: client])
+				def containerName = backup.getConfigProperty('containerName')
+				def protectedItemName = backup.getConfigProperty('protectedItemName')
+				def vmId = backup.getConfigProperty('vmId')
+				def onDemandResults = apiService.triggerOnDemandBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backup.backupJob.internalId])
 				if(onDemandResults.success == true && onDemandResults.statusCode == '202') {
 					rtn.success = true
 
@@ -331,7 +295,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 					def keepGoing = true
 					while(keepGoing) {
 						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: onDemandResults.results, client: client])
-
 						if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
 							keepGoing = false
 							jobId = asyncResponse.results?.properties?.jobId
@@ -373,9 +336,9 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 		log.debug("refreshBackupResult: {}", backupResult)
 		ServiceResponse<BackupExecutionResponse> rtn = ServiceResponse.prepare(new BackupExecutionResponse(backupResult))
 		def backup = backupResult.backup
+		def backupProvider = backup.backupProvider
 
-		if(backup.backupProvider?.enabled) {
-			def backupProvider = backup.backupProvider
+		if(backupProvider?.enabled) {
 			def authConfig = apiService.getAuthConfig(backupProvider)
 			def backupJobId = backupResult.externalId ?: backupResult.getConfigProperty('backupJobId')
 			def resourceGroup = backup.getConfigProperty('resourceGroup')
