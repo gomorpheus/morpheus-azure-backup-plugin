@@ -3,6 +3,8 @@ package com.morpheusdata.azure.util
 import com.morpheusdata.model.BackupResult
 import com.morpheusdata.model.Cloud
 import groovy.util.logging.Slf4j
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @Slf4j
 class AzureBackupUtility {
@@ -109,5 +111,13 @@ class AzureBackupUtility {
             status = BackupResult.Status.CANCELLED.toString()
         }
         return status
+    }
+
+    static parseDate(dateTimeString) {
+        def basicPattern = "yyyy-MM-dd'T'HH:mm:ss."
+        def microDigits = dateTimeString.split("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.")[1].split("Z")[0].length()
+        def pattern = basicPattern + "S".multiply(microDigits) + "Z"
+
+        return LocalDateTime.parse(dateTimeString, DateTimeFormatter.ofPattern(pattern)).toDate()
     }
 }

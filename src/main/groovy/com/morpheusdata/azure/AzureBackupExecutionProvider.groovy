@@ -13,8 +13,6 @@ import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.azure.services.ApiService
 import groovy.util.logging.Slf4j
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 @Slf4j
 class AzureBackupExecutionProvider implements BackupExecutionProvider {
@@ -267,50 +265,42 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 		try {
 			def backupProvider = backup.backupProvider
 			def authConfig = apiService.getAuthConfig(backupProvider)
+			def resourceGroup = backup.getConfigProperty('resourceGroup')
+			def vault = backup.getConfigProperty('vault')
+			def containerName = backup.getConfigProperty('containerName')
+			def protectedItemName = backup.getConfigProperty('protectedItemName')
+			def vmId = backup.getConfigProperty('vmId')
+			def client = new HttpApiClient()
 
-			def server
-			if(backup.computeServerId) {
-				server = morpheusContext.services.computeServer.get(backup.computeServerId)
-			} else {
-				def workload = morpheusContext.services.workload.get(backup.containerId)
-				server = morpheusContext.services.computeServer.get(workload?.server.id)
-			}
-			if(server) {
-				def resourceGroup = backup.getConfigProperty('resourceGroup')
-				def vault = backup.getConfigProperty('vault')
-				def containerName = backup.getConfigProperty('containerName')
-				def protectedItemName = backup.getConfigProperty('protectedItemName')
-				def vmId = backup.getConfigProperty('vmId')
-				def onDemandResults = apiService.triggerOnDemandBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backup.backupJob.internalId])
-				if(onDemandResults.success == true && onDemandResults.statusCode == '202') {
-					rtn.success = true
+			def onDemandResults = apiService.triggerOnDemandBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backup.backupJob.internalId, client: client])
+			if(onDemandResults.success == true && onDemandResults.statusCode == '202') {
+				rtn.success = true
 
-					def jobId
-					sleep(1000)
-					def attempts = 0
-					def keepGoing = true
-					while(keepGoing) {
-						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: onDemandResults.results, client: client])
-						if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
-							keepGoing = false
-							jobId = asyncResponse.results?.properties?.jobId
-							rtn.data.backupResult.externalId = jobId
-							rtn.data.backupResult.setConfigProperty("backupJobId", jobId)
-							rtn.data.updates = true
-						}
-
-						if(keepGoing) {
-							sleep(1000)
-							attempts++
-						}
+				def jobId
+				sleep(1000)
+				def attempts = 0
+				def keepGoing = true
+				while(keepGoing) {
+					def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: onDemandResults.results, client: client])
+					if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
+						keepGoing = false
+						jobId = asyncResponse.results?.properties?.jobId
+						rtn.data.backupResult.externalId = jobId
+						rtn.data.backupResult.setConfigProperty("backupJobId", jobId)
+						rtn.data.updates = true
 					}
-				} else if (onDemandResults.error?.message) {
-					log.error("executeBackup error: ${onDemandResults.error}")
-					rtn.error = onDemandResults.error.message
-				} else {
-					log.error("executeBackup error: ${onDemandResults}")
-					rtn.error = "Error executing backup"
+
+					if(keepGoing) {
+						sleep(1000)
+						attempts++
+					}
 				}
+			} else if (onDemandResults.error?.message) {
+				log.error("executeBackup error: ${onDemandResults.error}")
+				rtn.error = onDemandResults.error.message
+			} else {
+				log.error("executeBackup error: ${onDemandResults}")
+				rtn.error = "Error executing backup"
 			}
 		}
 		catch (e) {
@@ -362,9 +352,8 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 					}
 
 					if(backupJob.properties.startTime && backupJob.properties.endTime) {
-						DateTimeFormatter parser = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS'Z'");
-						def startDate = LocalDateTime.parse(backupJob.properties.startTime, parser).toDate()
-						def endDate = LocalDateTime.parse(backupJob.properties.endTime, parser).toDate()
+						def startDate = AzureBackupUtility.parseDate(backupJob.properties.startTime)
+						def endDate = AzureBackupUtility.parseDate(backupJob.properties.endTime)
 						if (startDate && rtn.data.backupResult.startDate != startDate) {
 							rtn.data.backupResult.startDate = startDate
 							doUpdate = true
