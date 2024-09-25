@@ -335,18 +335,10 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 					if(doUpdate) {
 						rtn.data.backupRestore.lastUpdated = new Date()
 					}
-					if(restoreStatus == BackupResult.Status.SUCCEEDED.toString()) {
-						finalizeRestore(rtn.data.backupRestore)
-					}
 
-					if(restoreStatus == BackupResult.Status.FAILED.toString()) {
-						def targetWorkload = morpheus.services.workload.get(rtn.data.backupRestore.containerId)
-						def instance = targetWorkload?.instance
-						instance?.status = Instance.Status.unknown
-						morpheus.services.instance.save(instance)
-						targetWorkload.server.status = Instance.Status.unknown.toString()
-						targetWorkload.status = Workload.Status.unknown
-						morpheus.services.workload.save(targetWorkload)
+					if(restoreStatus == BackupResult.Status.SUCCEEDED.toString()) {
+						def targetWorkload = morpheusContext.services.workload.get(backupRestore.containerId)
+						morpheusContext.async.backup.backupRestore.finalizeRestore(targetWorkload)
 					}
 
 					rtn.data.updates = doUpdate
@@ -360,67 +352,6 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 		}
 
 		return rtn
-	}
-
-	ServiceResponse finalizeRestore(BackupRestore restore) {
-		log.debug("finalizeRestore: {}", restore)
-		def instance
-		def instanceId
-		try {
-			// make sure to change status of restore so it doesn't overlap itself
-			restore.status = BackupRestore.Status.FINALIZING
-			morpheusContext.services.backup.backupRestore.save(restore)
-			// Need to update the externalId as it has changed
-			def targetWorkload = morpheusContext.services.workload.get(restore.containerId)
-			instance = targetWorkload?.instance
-			instanceId = instance.id
-			def server = morpheusContext.services.computeServer.get(targetWorkload.server.id)
-			log.info("server: ${server.dump()}")
-			log.info("server.id: ${server.id}")
-			// get the severed discovered by cloud sync
-			if (!server.externalId && !server.uniqueId) {
-				ComputeServer matchedServer = morpheusContext.services.computeServer.find(
-						new DataQuery().withFilters(
-								new DataFilter('name', server.name),
-								new DataFilter('id', '!=', server.id)
-						)
-				)
-				log.info("matchedServer: ${matchedServer.dump()}")
-				log.info("matchedServer.id: ${matchedServer.id}")
-				if (matchedServer) {
-					server.externalId = matchedServer.externalId
-					server.internalId = matchedServer.internalId
-					server.uniqueId = matchedServer.uniqueId
-					morpheusContext.services.computeServer.save(server)
-				} else {
-					restore.status = BackupRestore.Status.IN_PROGRESS.toString()
-					restore.endDate = null
-					morpheusContext.services.backup.backupRestore.save(restore)
-				}
-			}
-			log.debug("server externalIP: ${server.externalIp}")
-			if (server.externalIp) {
-				morpheusContext.async.backup.backupRestore.finalizeRestore(targetWorkload)
-				restore.status = BackupRestore.Status.SUCCEEDED.toString()
-				restore.endDate = new Date()
-				restore.lastUpdated = new Date()
-				restore.duration = restore.endDate.getTime() - restore.startDate.getTime()
-				morpheusContext.services.backup.backupRestore.save(restore)
-			}
-		} catch (e) {
-			log.error("Error in finalizeRestore: ${e}", e)
-			if (instanceId) {
-				def instanceRecord = morpheusContext.services.instance.get(instanceId)
-				instanceRecord.status = Instance.Status.failed
-				morpheusContext.services.instance.save(instanceRecord)
-			}
-			restore.status = BackupRestore.Status.FAILED.toString()
-			restore.endDate = new Date()
-			restore.lastUpdated = new Date()
-			restore.duration = restore.endDate.getTime() - restore.startDate.getTime()
-			morpheusContext.services.backup.backupRestore.save(restore)
-		}
-		return ServiceResponse.success()
 	}
 
 	private buildAzureInternalName(Map authConfig, name, resourceGroup, existingNames = [], client = null) {
