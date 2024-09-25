@@ -1,8 +1,16 @@
 package com.morpheusdata.azure
 
+import com.morpheusdata.azure.services.ApiService
+import com.morpheusdata.azure.util.AzureBackupUtility
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupRestoreProvider
+import com.morpheusdata.core.backup.response.BackupRestoreResponse
+import com.morpheusdata.core.data.DataFilter
+import com.morpheusdata.core.data.DataQuery
+import com.morpheusdata.core.util.HttpApiClient
+import com.morpheusdata.model.ComputeServer
+import com.morpheusdata.model.Workload
 import com.morpheusdata.response.ServiceResponse;
 import com.morpheusdata.model.BackupRestore;
 import com.morpheusdata.model.BackupResult;
@@ -15,10 +23,12 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 
 	Plugin plugin
 	MorpheusContext morpheusContext
+	ApiService apiService
 
 	AzureBackupRestoreProvider(Plugin plugin, MorpheusContext morpheusContext) {
 		this.plugin = plugin
 		this.morpheusContext = morpheusContext
+		this.apiService = new ApiService(morpheusContext)
 	}
 	
 	/**
@@ -112,7 +122,158 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 	 */
 	@Override
 	ServiceResponse restoreBackup(BackupRestore backupRestore, BackupResult backupResult, Backup backup, Map opts) {
-		return ServiceResponse.success()
+		log.debug("restoreBackup, restore: {}, source: {}, opts: {}", backupRestore, backupResult, opts)
+		ServiceResponse response = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
+		try {
+			def backupProvider = backup.backupProvider
+			def authConfig = apiService.getAuthConfig(backupProvider)
+			def containerId = opts.containerId ?: backup?.containerId
+			def container = morpheusContext.services.workload.get(containerId)
+			def server = container.server
+			def resourceGroup = backup.getConfigProperty('resourceGroup')
+			def vault = backup.getConfigProperty('vault')
+			def protectedItemName = backup.getConfigProperty('protectedItemName')
+			def containerName = backup.getConfigProperty('containerName')
+			def vmId = backup.getConfigProperty('vmId')
+			def instanceConfig = backupResult.getConfigMap().instanceConfig
+			def datastoreId = instanceConfig.volumes.getAt(0).datastoreId
+			def poolId = instanceConfig.config.resourcePoolId
+			def datastore = morpheusContext.services.cloud.datastore.get(datastoreId as Long)
+			def pool = poolId?.startsWith('pool-') ? morpheusContext.services.cloud.pool.get(poolId.substring(5) as Long) : null
+			HttpApiClient client = new HttpApiClient()
+			def body = [
+				properties: [
+					objectType: 'IaasVMRestoreRequest',
+					sourceResourceId: vmId,
+					storageAccountId: datastore.internalId,
+					region: pool.regionCode
+				]
+			]
+			if(opts.restoreType == 'new' && opts.containerId && opts.containerId != backup.containerId) {
+				def networkConfig = instanceConfig.networkInterfaces.network.getAt(0)
+				def subnet = networkConfig.subnet?.startsWith('subnet-') ? morpheusContext.services.networkSubnet.get(networkConfig.subnet.substring(7) as Long) : null
+				def network = networkConfig.id?.startsWith('network-') ? morpheusContext.services.network.get(networkConfig.id.substring(8) as Long) : null
+
+				def existingNames = morpheusContext.services.computeServer.list(
+					new DataQuery().withFilters(
+						new DataFilter('cloud.id', backup.zoneId),
+						new DataFilter('resourcePool.id', pool.id)
+					)
+				)?.collect { it.externalId }
+
+				def shortendName = buildAzureInternalName(authConfig, server.name, resourceGroup, existingNames, client) // do we need existing names here?
+				server.externalId = shortendName
+				body.properties.recoveryType = 'AlternateLocation'
+				body.properties.targetVirtualMachineId = pool.internalId + '/providers/Microsoft.Compute/virtualmachines/' + server.externalId
+				body.properties.targetResourceGroupId = pool.internalId
+				body.properties.virtualNetworkId = network.externalId
+				body.properties.subnetId = subnet.externalId
+				body.properties.createNewCloudService = false
+				body.properties.originalStorageAccountOption = false
+				body.properties.encryptionDetails = [
+					encryptionEnabled: false
+				]
+			} else {
+				body.properties.recoveryType = 'OriginalLocation'
+				body.properties.createNewCloudService = false
+				body.properties.originalStorageAccountOption = false
+				body.properties.affinityGroup = ''
+				body.properties.diskEncryptionSetId = null
+				body.properties.subnetId = null
+				body.properties.targetDomainNameId = null
+				body.properties.targetResourceGroupId = null
+				body.properties.targetVirtualMachineId = null
+				body.properties.virtualNetworkId = null
+			}
+
+			// Azure doesn't link the job to the recovery point, so we need to find the closest recovery point to the startDate
+			// Azure uses $filter to query OData filter options. But this is not working for recoveryPointTime
+			def vmRecoveryPointsResponse = apiService.getVmRecoveryPoints(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, client: client])
+			if (vmRecoveryPointsResponse.success == true) {
+				def recoveryPoints = vmRecoveryPointsResponse.results.value
+				def startDate = backupResult.startDate
+				def endDate = backupResult.endDate
+				def recoveryPointsBetweenDates = recoveryPoints.findAll { recoveryPoint ->
+					def recoveryPointTime = AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime)
+					(recoveryPointTime.after(startDate) || recoveryPointTime.equals(startDate)) && (recoveryPointTime.before(endDate) || recoveryPointTime.equals(endDate))
+				}
+
+				// Find the object with the closest recoveryPointTime to the start date
+				def closestRecoveryPoint = recoveryPointsBetweenDates.min { recoveryPoint ->
+					Math.abs(startDate.getTime() - AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime).getTime())
+				}
+
+				if(!closestRecoveryPoint) {
+					log.error("Could not find recovery point near: ${startDate}")
+					response.msg = "Could not find recovery point"
+					return response
+				}
+
+				// Restore the VM to the closest recovery point
+				body.properties.recoveryPointId = closestRecoveryPoint.name
+				def restoreResponse = apiService.restoreVm(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, body: body, recoveryPointId: closestRecoveryPoint.name, client: client])
+
+				if(restoreResponse.success == true && restoreResponse.statusCode == '202') {
+					response.success = true
+					response.msg = "Restore started"
+
+					// fetch the restore job
+					def jobId
+					sleep(1000)
+					def attempts = 0
+					def keepGoing = true
+					while(keepGoing) {
+						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: restoreResponse.results, client: client])
+						log.info("asyncResponse: ${asyncResponse}")
+						if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
+							keepGoing = false
+							jobId = asyncResponse.results?.properties?.jobId
+							backupRestore.externalStatusRef = jobId
+
+							def instance = container?.instance
+							instance?.status = Instance.Status.restoring.toString()
+							morpheusContext.services.instance.save(instance)
+							container.status = Workload.Status.pending
+							morpheusContext.services.workload.save(container)
+							server.status = Instance.Status.provisioning.toString()
+							server.name = instance.name
+							morpheusContext.services.computeServer.save(server)
+							backupRestore.status = BackupRestore.Status.IN_PROGRESS.toString()
+							response.data.updates = true
+							response.success = true
+						}
+
+						if(keepGoing) {
+							sleep(1000)
+							attempts++
+						}
+					}
+					if(!jobId) {
+						response.success = false
+						backupRestore.status = BackupRestore.Status.FAILED.toString()
+						backupRestore.errorMessage = "Failed to start restore"
+						response.data.updates = true
+					}
+				} else {
+					response.success = false
+					backupRestore.errorMessage = restoreResponse.msg
+					backupRestore.status = BackupRestore.Status.FAILED.toString()
+					response.data.updates = true
+
+					if(container.instance?.id) {
+						def instance = morpheus.services.instance.get(container.instance.id)
+						if(instance) {
+							instance.status = Instance.Status.failed.toString()
+							morpheus.services.instance.save(instance)
+						}
+					}
+				}
+			}
+		} catch (e) {
+			log.error("restoreBackup error", e)
+			response.error = "Failed to restore Commvault backup: ${e}"
+		}
+		return response
 	}
 
 	/**
@@ -127,6 +288,167 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 	 */
 	@Override
 	ServiceResponse refreshBackupRestoreResult(BackupRestore backupRestore, BackupResult backupResult) {
+		log.debug("refreshBackupRestoreResult: backupRestore: ${backupRestore.dump()}")
+		ServiceResponse<BackupRestoreResponse> rtn = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
+		def backup = backupResult.backup
+		def backupProvider = backup.backupProvider
+
+		try {
+			if (!backupProvider?.enabled) {
+				rtn.msg = "BackupProvider not enabled"
+				return rtn
+			}
+			def authConfig = apiService.getAuthConfig(backupProvider)
+			def backupJobId = backupRestore.externalStatusRef
+			def resourceGroup = backup.getConfigProperty('resourceGroup')
+			def vault = backup.getConfigProperty('vault')
+			if(backupJobId) {
+				def getBackupJobResult = apiService.getBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
+				log.info("getBackupJobResult: ${getBackupJobResult}")
+				if (getBackupJobResult.success == true && getBackupJobResult.results) {
+					def backupJob = getBackupJobResult.results
+					boolean doUpdate = false
+					log.info("backupJob: ${backupJob}")
+
+					def restoreStatus = AzureBackupUtility.getBackupStatus(backupJob.properties.status)
+					if(rtn.data.backupRestore.status != restoreStatus) {
+						rtn.data.backupRestore.status = restoreStatus
+						doUpdate = true
+					}
+					if(backupJob.properties.startTime && backupJob.properties.endTime) {
+						def startDate = AzureBackupUtility.parseDate(backupJob.properties.startTime)
+						def endDate = AzureBackupUtility.parseDate(backupJob.properties.endTime)
+						if (startDate && rtn.data.backupRestore.startDate != startDate) {
+							rtn.data.backupRestore.startDate = startDate
+							doUpdate = true
+						}
+						if (endDate && rtn.data.backupRestore.endDate != endDate) {
+							rtn.data.backupRestore.endDate = endDate
+							doUpdate = true
+						}
+						def duration = (endDate && startDate) ? (endDate.time - startDate.time) : 0
+						if (rtn.data.backupRestore.duration != duration) {
+							rtn.data.backupRestore.duration = duration
+							doUpdate = true
+						}
+					}
+					if(doUpdate) {
+						rtn.data.backupRestore.lastUpdated = new Date()
+					}
+					if(restoreStatus == BackupResult.Status.SUCCEEDED.toString()) {
+						finalizeRestore(rtn.data.backupRestore)
+					}
+
+					if(restoreStatus == BackupResult.Status.FAILED.toString()) {
+						def targetWorkload = morpheus.services.workload.get(rtn.data.backupRestore.containerId)
+						def instance = targetWorkload?.instance
+						instance?.status = Instance.Status.unknown
+						morpheus.services.instance.save(instance)
+						targetWorkload.server.status = Instance.Status.unknown.toString()
+						targetWorkload.status = Workload.Status.unknown
+						morpheus.services.workload.save(targetWorkload)
+					}
+
+					rtn.data.updates = doUpdate
+					rtn.success = true
+				}
+
+			}
+		}
+		catch (Exception ex) {
+			log.error("refreshBackupRestoreResult error", ex)
+		}
+
+		return rtn
+	}
+
+	ServiceResponse finalizeRestore(BackupRestore restore) {
+		log.debug("finalizeRestore: {}", restore)
+		def instance
+		def instanceId
+		try {
+			// make sure to change status of restore so it doesn't overlap itself
+			restore.status = BackupRestore.Status.FINALIZING
+			morpheusContext.services.backup.backupRestore.save(restore)
+			// Need to update the externalId as it has changed
+			def targetWorkload = morpheusContext.services.workload.get(restore.containerId)
+			instance = targetWorkload?.instance
+			instanceId = instance.id
+			def server = morpheusContext.services.computeServer.get(targetWorkload.server.id)
+			log.info("server: ${server.dump()}")
+			log.info("server.id: ${server.id}")
+			// get the severed discovered by cloud sync
+			if (!server.externalId && !server.uniqueId) {
+				ComputeServer matchedServer = morpheusContext.services.computeServer.find(
+						new DataQuery().withFilters(
+								new DataFilter('name', server.name),
+								new DataFilter('id', '!=', server.id)
+						)
+				)
+				log.info("matchedServer: ${matchedServer.dump()}")
+				log.info("matchedServer.id: ${matchedServer.id}")
+				if (matchedServer) {
+					server.externalId = matchedServer.externalId
+					server.internalId = matchedServer.internalId
+					server.uniqueId = matchedServer.uniqueId
+					morpheusContext.services.computeServer.save(server)
+				} else {
+					restore.status = BackupRestore.Status.IN_PROGRESS.toString()
+					restore.endDate = null
+					morpheusContext.services.backup.backupRestore.save(restore)
+				}
+			}
+			log.debug("server externalIP: ${server.externalIp}")
+			if (server.externalIp) {
+				morpheusContext.async.backup.backupRestore.finalizeRestore(targetWorkload)
+				restore.status = BackupRestore.Status.SUCCEEDED.toString()
+				restore.endDate = new Date()
+				restore.lastUpdated = new Date()
+				restore.duration = restore.endDate.getTime() - restore.startDate.getTime()
+				morpheusContext.services.backup.backupRestore.save(restore)
+			}
+		} catch (e) {
+			log.error("Error in finalizeRestore: ${e}", e)
+			if (instanceId) {
+				def instanceRecord = morpheusContext.services.instance.get(instanceId)
+				instanceRecord.status = Instance.Status.failed
+				morpheusContext.services.instance.save(instanceRecord)
+			}
+			restore.status = BackupRestore.Status.FAILED.toString()
+			restore.endDate = new Date()
+			restore.lastUpdated = new Date()
+			restore.duration = restore.endDate.getTime() - restore.startDate.getTime()
+			morpheusContext.services.backup.backupRestore.save(restore)
+		}
 		return ServiceResponse.success()
+	}
+
+	private buildAzureInternalName(Map authConfig, name, resourceGroup, existingNames = [], client = null) {
+		def internalName = name.replaceAll(/[^a-zA-Z0-9\- ]/, '')
+		def takeLength = 15
+		internalName = internalName.replaceAll(/\W+/,'-')?.take(takeLength)
+		while(internalName.endsWith('-')) {
+			internalName = internalName[0..-2] //lop off ending hyphens as these conflict in azure
+		}
+		def originalInternalName = internalName
+		def serverResults = apiService.getServer(authConfig, [externalId: internalName, resourceGroup: resourceGroup, client: client])
+		def seq = 1
+		log.debug("Existing Names ${existingNames}")
+		while(serverResults.success || existingNames?.contains(internalName.toString())) {
+			def sequence = "${seq++}"
+			def originalEndsWithDash = originalInternalName.endsWith('-')
+			def suffix = originalEndsWithDash ? sequence : "-${sequence}"
+			def suffixLength = suffix.size()
+
+			def namePrefix = originalInternalName.take(takeLength-suffixLength)
+			internalName = "${namePrefix}${suffix}"
+
+			if(existingNames?.contains(internalName.toString()) ) {
+				log.debug("Name ${internalName} already used internally")
+			} else {
+				serverResults = apiService.getServer(authConfig, [externalId: internalName, resourceGroup: resourceGroup, client: client])
+			}
+		}
+		return internalName
 	}
 }

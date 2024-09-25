@@ -190,7 +190,7 @@ class AzureBackupTypeProvider extends AbstractBackupTypeProvider {
 	@Override
 	AzureBackupRestoreProvider getRestoreProvider() {
 		if(!this.restoreProvider) {
-		this.restoreProvider = new AzureBackupRestoreProvider(getPlugin())
+		this.restoreProvider = new AzureBackupRestoreProvider(getPlugin(), getMorpheus())
 		}
 		return this.restoreProvider
 	}

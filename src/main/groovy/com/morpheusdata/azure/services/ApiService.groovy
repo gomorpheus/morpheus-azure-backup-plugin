@@ -472,6 +472,79 @@ class ApiService {
         return rtn
     }
 
+    static restoreVm(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = opts.client ?: new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/${opts.containerName}/protectedItems/${opts.protectedItemName}/recoveryPoints/${opts.recoveryPointId}/restore"
+            def apiVersion = '2019-05-13'
+            def headers = buildHeaders(null, token, opts)
+            def body = opts.body
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+            log.info("restoreVm results: ${results}")
+            if(results.success) {
+                log.info("results.headers: ${results.headers}")
+                rtn.results = results.headers?.'Azure-AsyncOperation'
+                rtn.statusCode = results.statusCode
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("restoreVM error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static getVmRecoveryPoints(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = opts.client ?: new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupFabrics/Azure/protectionContainers/${opts.containerName}/protectedItems/${opts.protectedItemName}/recoveryPoints"
+            def apiVersion = '2019-05-13'
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            if(results.success) {
+                rtn.results = results.data
+                rtn.statusCode = results.statusCode
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("getVmRecoveryPoints error: ${e}", e)
+        }
+        return rtn
+    }
+
+    static getServer(Map authConfig, Map opts) {
+        def rtn = [success: false ]
+
+        try {
+            HttpApiClient client = opts.client ?: new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.Compute/virtualMachines/${opts.externalId}"
+            def apiVersion = '2024-07-01' // opts.zone.zoneType.code == 'azure' ? '2019-07-01' : '2017-12-01'
+            def headers = buildHeaders(null, token, opts)
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
+            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            if(results.success) {
+                rtn.results = results.data
+                rtn.statusCode = results.statusCode
+                rtn.success = true
+            }
+        } catch (e) {
+            log.error("getServer error: ${e}", e)
+            rtn.msg = e.message
+        }
+        return rtn
+    }
+
     private getAzureProxy(Cloud cloud) {
         if(cloud.apiProxy) {
             def networkProxy = new NetworkProxy(

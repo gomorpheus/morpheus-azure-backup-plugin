@@ -116,7 +116,8 @@ class AzureBackupUtility {
     static parseDate(dateTimeString) {
         def basicPattern = "yyyy-MM-dd'T'HH:mm:ss."
         def microDigits = dateTimeString.split("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.")[1].split("Z")[0].length()
-        def pattern = basicPattern + "S".multiply(microDigits) + "Z"
+        def pattern = basicPattern + "S".multiply(microDigits) + "'Z'"
+        log.debug("Parsing date: ${dateTimeString} with pattern: ${pattern}")
 
         return LocalDateTime.parse(dateTimeString, DateTimeFormatter.ofPattern(pattern)).toDate()
     }
