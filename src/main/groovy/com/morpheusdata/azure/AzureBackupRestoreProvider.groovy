@@ -149,6 +149,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 					region: pool.regionCode
 				]
 			]
+			def newServerId
 			if(opts.restoreType == 'new' && opts.containerId && opts.containerId != backup.containerId) {
 				def networkConfig = instanceConfig.networkInterfaces.network.getAt(0)
 				def subnet = networkConfig.subnet?.startsWith('subnet-') ? morpheusContext.services.networkSubnet.get(networkConfig.subnet.substring(7) as Long) : null
@@ -161,10 +162,9 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 					)
 				)?.collect { it.externalId }
 
-				def shortendName = buildAzureInternalName(authConfig, server.name, resourceGroup, existingNames, client) // do we need existing names here?
-				server.externalId = shortendName
+				newServerId = buildAzureInternalName(authConfig, server.name, resourceGroup, existingNames, client)
 				body.properties.recoveryType = 'AlternateLocation'
-				body.properties.targetVirtualMachineId = pool.internalId + '/providers/Microsoft.Compute/virtualmachines/' + server.externalId
+				body.properties.targetVirtualMachineId = pool.internalId + '/providers/Microsoft.Compute/virtualmachines/' + newServerId
 				body.properties.targetResourceGroupId = pool.internalId
 				body.properties.virtualNetworkId = network.externalId
 				body.properties.subnetId = subnet.externalId
@@ -232,13 +232,11 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 
 							def instance = container?.instance
 							instance?.status = Instance.Status.restoring.toString()
-							morpheusContext.services.instance.save(instance)
-							container.status = Workload.Status.pending
-							morpheusContext.services.workload.save(container)
-							server.status = Instance.Status.provisioning.toString()
-							server.name = instance.name
-							morpheusContext.services.computeServer.save(server)
 							backupRestore.status = BackupRestore.Status.IN_PROGRESS.toString()
+							if(newServerId) {
+								server.externalId = newServerId
+								morpheusContext.services.computeServer.save(server)
+							}
 							response.data.updates = true
 							response.success = true
 						}
