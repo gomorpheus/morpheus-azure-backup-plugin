@@ -1,5 +1,6 @@
 package com.morpheusdata.azure
 
+import com.morpheusdata.azure.sync.RecoveryPointSync
 import com.morpheusdata.azure.sync.VaultSync
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
@@ -299,6 +300,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 
 					new PolicySync(backupProviderModel, apiService, plugin).execute()
 					new VaultSync(backupProviderModel, apiService, plugin).execute()
+					new RecoveryPointSync(backupProviderModel, apiService, plugin).execute()
 
 					rtn.success = true
 				} else {
