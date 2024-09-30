@@ -146,7 +146,8 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 					objectType: 'IaasVMRestoreRequest',
 					sourceResourceId: vmId,
 					storageAccountId: datastore.internalId,
-					region: pool.regionCode
+					region: pool.regionCode,
+					recoveryPointId: backupResult.externalId,
 				]
 			]
 			def newServerId
@@ -185,85 +186,55 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 				body.properties.targetVirtualMachineId = null
 				body.properties.virtualNetworkId = null
 			}
+			def restoreResponse = apiService.restoreVm(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, body: body, recoveryPointId: backupResult.externalId, client: client])
 
-			// Azure doesn't link the job to the recovery point, so we need to find the closest recovery point to the startDate
-			// Azure uses $filter to query OData filter options. But this is not working for recoveryPointTime
-			def vmRecoveryPointsResponse = apiService.getVmRecoveryPoints(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, client: client])
-			if (vmRecoveryPointsResponse.success == true) {
-				def recoveryPoints = vmRecoveryPointsResponse.results.value
-				def startDate = backupResult.startDate
-				def endDate = backupResult.endDate
-				def recoveryPointsBetweenDates = recoveryPoints.findAll { recoveryPoint ->
-					def recoveryPointTime = AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime)
-					(recoveryPointTime.after(startDate) || recoveryPointTime.equals(startDate)) && (recoveryPointTime.before(endDate) || recoveryPointTime.equals(endDate))
-				}
+			if(restoreResponse.success == true && restoreResponse.statusCode == '202') {
+				response.success = true
+				response.msg = "Restore started"
 
-				// Find the object with the closest recoveryPointTime to the start date
-				def closestRecoveryPoint = recoveryPointsBetweenDates.min { recoveryPoint ->
-					Math.abs(startDate.getTime() - AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime).getTime())
-				}
-
-				if(!closestRecoveryPoint) {
-					log.error("Could not find recovery point near: ${startDate}")
-					response.msg = "Could not find recovery point"
-					return response
-				}
-
-				// Restore the VM to the closest recovery point
-				body.properties.recoveryPointId = closestRecoveryPoint.name
-				def restoreResponse = apiService.restoreVm(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, body: body, recoveryPointId: closestRecoveryPoint.name, client: client])
-
-				if(restoreResponse.success == true && restoreResponse.statusCode == '202') {
-					response.success = true
-					response.msg = "Restore started"
-
-					// fetch the restore job
-					def jobId
-					sleep(1000)
-					def attempts = 0
-					def keepGoing = true
-					while(keepGoing) {
-						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: restoreResponse.results, client: client])
-						log.info("asyncResponse: ${asyncResponse}")
-						if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
-							keepGoing = false
-							jobId = asyncResponse.results?.properties?.jobId
-							backupRestore.externalStatusRef = jobId
-
-							def instance = container?.instance
-							instance?.status = Instance.Status.restoring.toString()
-							backupRestore.status = BackupRestore.Status.IN_PROGRESS.toString()
-							if(newServerId) {
-								server.externalId = newServerId
-								morpheusContext.services.computeServer.save(server)
-							}
-							response.data.updates = true
-							response.success = true
+				// fetch the restore job
+				def jobId
+				sleep(1000)
+				def attempts = 0
+				def keepGoing = true
+				while(keepGoing) {
+					def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: restoreResponse.results, client: client])
+					log.info("asyncResponse: ${asyncResponse}")
+					if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
+						keepGoing = false
+						jobId = asyncResponse.results?.properties?.jobId
+						backupRestore.externalStatusRef = jobId
+						backupRestore.status = BackupRestore.Status.IN_PROGRESS.toString()
+						if(newServerId) {
+							server.externalId = newServerId
+							morpheusContext.services.computeServer.save(server)
 						}
-
-						if(keepGoing) {
-							sleep(1000)
-							attempts++
-						}
-					}
-					if(!jobId) {
-						response.success = false
-						backupRestore.status = BackupRestore.Status.FAILED.toString()
-						backupRestore.errorMessage = "Failed to start restore"
 						response.data.updates = true
+						response.success = true
 					}
-				} else {
-					response.success = false
-					backupRestore.errorMessage = restoreResponse.msg
-					backupRestore.status = BackupRestore.Status.FAILED.toString()
-					response.data.updates = true
 
-					if(container.instance?.id) {
-						def instance = morpheus.services.instance.get(container.instance.id)
-						if(instance) {
-							instance.status = Instance.Status.failed.toString()
-							morpheus.services.instance.save(instance)
-						}
+					if(keepGoing) {
+						sleep(1000)
+						attempts++
+					}
+				}
+				if(!jobId) {
+					response.success = false
+					backupRestore.status = BackupRestore.Status.FAILED.toString()
+					backupRestore.errorMessage = "Failed to start restore"
+					response.data.updates = true
+				}
+			} else {
+				response.success = false
+				backupRestore.errorMessage = restoreResponse.msg
+				backupRestore.status = BackupRestore.Status.FAILED.toString()
+				response.data.updates = true
+
+				if(container.instance?.id) {
+					def instance = morpheus.services.instance.get(container.instance.id)
+					if(instance) {
+						instance.status = Instance.Status.failed.toString()
+						morpheus.services.instance.save(instance)
 					}
 				}
 			}

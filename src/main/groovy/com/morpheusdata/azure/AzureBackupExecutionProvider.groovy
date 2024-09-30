@@ -285,7 +285,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 					if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
 						keepGoing = false
 						jobId = asyncResponse.results?.properties?.jobId
-						rtn.data.backupResult.externalId = jobId
 						rtn.data.backupResult.setConfigProperty("backupJobId", jobId)
 						rtn.data.updates = true
 					}
@@ -326,12 +325,13 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 
 		if(backupProvider?.enabled) {
 			def authConfig = apiService.getAuthConfig(backupProvider)
-			def backupJobId = backupResult.externalId ?: backupResult.getConfigProperty('backupJobId')
+			def backupJobId = backupResult.getConfigProperty('backupJobId')
 			def resourceGroup = backup.getConfigProperty('resourceGroup')
 			def vault = backup.getConfigProperty('vault')
 
 			if(backupJobId) {
-				def getBackupJobResult = apiService.getBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
+				def client = new HttpApiClient()
+				def getBackupJobResult = apiService.getBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId, client: client])
 				if(getBackupJobResult.success == true && getBackupJobResult.results) {
 					def backupJob = getBackupJobResult.results
 					boolean doUpdate = false
@@ -366,6 +366,33 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 						if (rtn.data.backupResult.durationMillis != durationMillis) {
 							rtn.data.backupResult.durationMillis = durationMillis
 							doUpdate = true
+						}
+					}
+
+					if(backupJob.properties.status == 'Completed'){
+						def containerName = backup.getConfigProperty('containerName')
+						def protectedItemName = backup.getConfigProperty('protectedItemName')
+						// Azure doesn't link the job to the recovery point, so we need to find the closest recovery point to the startDate
+						def vmRecoveryPointsResponse = apiService.getVmRecoveryPoints(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, client: client])
+						if (vmRecoveryPointsResponse.success == true) {
+							def recoveryPoints = vmRecoveryPointsResponse.results.value
+							def startDate = backupResult.startDate
+							def endDate = backupResult.endDate
+							def recoveryPointsBetweenDates = recoveryPoints.findAll { recoveryPoint ->
+								def recoveryPointTime = AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime)
+								(recoveryPointTime.after(startDate) || recoveryPointTime.equals(startDate)) && (recoveryPointTime.before(endDate) || recoveryPointTime.equals(endDate))
+							}
+
+							// Find the recovery point with the closest recoveryPointTime to the start date
+							def closestRecoveryPoint = recoveryPointsBetweenDates.min { recoveryPoint ->
+								Math.abs(startDate.getTime() - AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime).getTime())
+							}
+
+							if(closestRecoveryPoint) {
+								rtn.data.backupResult.setConfigProperty("recoveryPointId", closestRecoveryPoint.name)
+								rtn.data.backupResult.externalId = closestRecoveryPoint.name
+								doUpdate = true
+							}
 						}
 					}
 					rtn.data.updates = doUpdate
