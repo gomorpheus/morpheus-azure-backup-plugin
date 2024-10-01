@@ -56,6 +56,12 @@ class RecoveryPointSync {
                         new DataFilter("status", BackupResult.Status.SUCCEEDED) // only successful backup will have an externalId
                     ]))
 
+                    def inProgressItems = morpheusContext.services.backup.backupResult.list(new DataQuery().withFilters([
+                        new DataFilter('backup.id', '=', backup.id),
+                        new DataFilter('account.id', '=', backupProviderModel.account.id),
+                        new DataFilter("status", BackupResult.Status.IN_PROGRESS)
+                    ]))
+
                     SyncTask<BackupResult, ArrayList<Map>, BackupResult> syncTask = new SyncTask<>(existingItems, cloudItems)
                     syncTask.addMatchFunction { BackupResult domainObject, Map cloudItem ->
                         domainObject.externalId == cloudItem.name
@@ -64,7 +70,7 @@ class RecoveryPointSync {
                     }.onUpdate { List<SyncTask.UpdateItem<BackupResult, Map>> updateItems ->
                         updateMatchedRecoveryPoints(updateItems)
                     }.onAdd { itemsToAdd ->
-                        addMissingRecoveryPoints(itemsToAdd, backup)
+                        addMissingRecoveryPoints(itemsToAdd, backup, inProgressItems)
                     }.withLoadObjectDetailsFromFinder { List<SyncTask.UpdateItemDto<BackupResult, Map>> updateItems ->
                         return morpheusContext.async.backup.backupResult.list( new DataQuery(backupProviderModel.account).withFilter("id", 'in', updateItems.collect { it.existingItem.id }))
                     }.start()
@@ -77,14 +83,21 @@ class RecoveryPointSync {
         }
     }
 
-    private addMissingRecoveryPoints(itemsToAdd, backup) {
+    private addMissingRecoveryPoints(itemsToAdd, backup, inProgressItems) {
         log.debug "addMissingRecoveryPoints: ${itemsToAdd}"
         def adds = []
         for(cloudItem in itemsToAdd) {
             Date createdDate = AzureBackupUtility.parseDate(cloudItem.properties.recoveryPointTime)
-            // check date isn't within the last 5 minutes, so that we don't add a backupResult that is still in progress, refreshBackupResult will set the externalId when successful
-            if(createdDate && createdDate.toInstant().isAfter(ZonedDateTime.now().minusMinutes(5).toInstant())) {
-                log.info("skipping recovery point within 5 minutes: ${createdDate}")
+            def skipItem = false
+            // check if any in progress item is within 5 minutes of this recovery point, refreshBackupResult will set the externalId when successful
+            for(inProgressItem in inProgressItems) {
+                if(inProgressItem.startDate && inProgressItem.startDate.toInstant().isAfter(createdDate.toInstant().minusSeconds(300)) && inProgressItem.startDate.toInstant().isBefore(createdDate.toInstant().plusSeconds(300))) {
+                    log.debug "skipping in progress recovery point: ${cloudItem.name}"
+                    skipItem = true
+                    break
+                }
+            }
+            if(skipItem) {
                 continue
             }
             Date createdDay = createdDate ? Date.from(createdDate.toInstant().truncatedTo(ChronoUnit.DAYS)) : null
