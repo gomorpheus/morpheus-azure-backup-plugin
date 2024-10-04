@@ -9,8 +9,6 @@ import com.morpheusdata.core.backup.response.BackupRestoreResponse
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
 import com.morpheusdata.core.util.HttpApiClient
-import com.morpheusdata.model.ComputeServer
-import com.morpheusdata.model.Workload
 import com.morpheusdata.response.ServiceResponse;
 import com.morpheusdata.model.BackupRestore;
 import com.morpheusdata.model.BackupResult;
@@ -122,9 +120,9 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 	 */
 	@Override
 	ServiceResponse restoreBackup(BackupRestore backupRestore, BackupResult backupResult, Backup backup, Map opts) {
-		log.debug("restoreBackup, restore: {}, source: {}, opts: {}", backupRestore, backupResult, opts)
 		ServiceResponse response = ServiceResponse.prepare(new BackupRestoreResponse(backupRestore))
 		try {
+			log.debug("restoreBackup, restore: {}, source: {}, opts: {}", backupRestore, backupResult, opts)
 			def backupProvider = backup.backupProvider
 			def authConfig = apiService.getAuthConfig(backupProvider)
 			def containerId = opts.containerId ?: backup?.containerId
@@ -187,7 +185,6 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 				body.properties.virtualNetworkId = null
 			}
 			def restoreResponse = apiService.restoreVm(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, body: body, recoveryPointId: backupResult.externalId, client: client])
-
 			if(restoreResponse.success == true && restoreResponse.statusCode == '202') {
 				response.success = true
 				response.msg = "Restore started"

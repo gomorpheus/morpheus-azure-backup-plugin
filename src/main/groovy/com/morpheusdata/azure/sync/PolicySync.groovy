@@ -6,6 +6,7 @@ import com.morpheusdata.core.BulkCreateResult
 import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
+import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.core.util.SyncTask
 import com.morpheusdata.model.BackupJob
 import com.morpheusdata.model.BackupProvider
@@ -35,6 +36,7 @@ class PolicySync {
         try {
             log.debug("PolicySync execute")
             Map authConfig = apiService.getAuthConfig(backupProviderModel)
+            def client = new HttpApiClient()
             def objCategory = "${backupProviderModel.type.code}.backup.vault.${backupProviderModel.id}"
             List<ReferenceData> vaults = morpheusContext.services.referenceData.list(new DataQuery().withFilters([
                 new DataFilter('category', objCategory),
@@ -42,7 +44,7 @@ class PolicySync {
             ]))
 
             vaults.each { vault ->
-                def listResults = apiService.listPolicies(authConfig, [vault: vault])
+                def listResults = apiService.listPolicies(authConfig, [vault: vault, client: client])
                 if(listResults.success) {
                     def cloudItems = listResults.results.value
                     Observable<BackupJobIdentityProjection> existingItems = morpheusContext.async.backupJob.listIdentityProjections(backupProviderModel)
