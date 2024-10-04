@@ -13,7 +13,6 @@ import com.morpheusdata.model.Backup
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.BackupResult
 import groovy.util.logging.Slf4j
-import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 import com.morpheusdata.core.backup.util.BackupResultUtility
 
@@ -61,6 +60,7 @@ class RecoveryPointSync {
                         new DataFilter('account.id', '=', backupProviderModel.account.id),
                         new DataFilter("status", BackupResult.Status.IN_PROGRESS)
                     ]))
+                    def server = morpheusContext.services.computeServer.get(backup.computeServerId)
 
                     SyncTask<BackupResult, ArrayList<Map>, BackupResult> syncTask = new SyncTask<>(existingItems, cloudItems)
                     syncTask.addMatchFunction { BackupResult domainObject, Map cloudItem ->
@@ -70,7 +70,7 @@ class RecoveryPointSync {
                     }.onUpdate { List<SyncTask.UpdateItem<BackupResult, Map>> updateItems ->
                         updateMatchedRecoveryPoints(updateItems)
                     }.onAdd { itemsToAdd ->
-                        addMissingRecoveryPoints(itemsToAdd, backup, inProgressItems)
+                        addMissingRecoveryPoints(itemsToAdd, backup, server, inProgressItems)
                     }.withLoadObjectDetailsFromFinder { List<SyncTask.UpdateItemDto<BackupResult, Map>> updateItems ->
                         return morpheusContext.async.backup.backupResult.list( new DataQuery(backupProviderModel.account).withFilter("id", 'in', updateItems.collect { it.existingItem.id }))
                     }.start()
@@ -83,10 +83,14 @@ class RecoveryPointSync {
         }
     }
 
-    private addMissingRecoveryPoints(itemsToAdd, backup, inProgressItems) {
+    private addMissingRecoveryPoints(itemsToAdd, backup, server, inProgressItems) {
         log.debug "addMissingRecoveryPoints: ${itemsToAdd}"
         def adds = []
         for(cloudItem in itemsToAdd) {
+            if(!server) {
+                log.error("server not found for backup: ${backup}")
+                continue
+            }
             Date createdDate = AzureBackupUtility.parseDate(cloudItem.properties.recoveryPointTime)
             def skipItem = false
             // check if any in progress item is within 5 minutes of this recovery point, refreshBackupResult will set the externalId when successful
@@ -124,7 +128,23 @@ class RecoveryPointSync {
             ]
 
             def add = new BackupResult(addConfig)
-            add.setConfigMap(cloudItem: cloudItem)
+
+            // build condensed config of what is needed for the recovery point
+            def datastoreId = server.volumes?.sort {a, b -> a.displayOrder <=> b.displayOrder ?: b.rootVolume <=> a.rootVolume ?: a.name <=> b.name}?.getAt(0)?.datastoreOption
+            def resourcePoolId = server.getConfigProperty('resourcePoolId')
+            def networkInterfaces = parseInterfacesToConfig(server)
+            def instanceConfig = [
+                    volumes: [[datastoreId: datastoreId]],
+                    networkInterfaces: networkInterfaces,
+                    config: [resourcePoolId: resourcePoolId]
+            ]
+
+            if(!datastoreId || !resourcePoolId || !networkInterfaces?.network?.id || !networkInterfaces?.network?.subnet ) {
+                log.error "missing required config values for recovery point: ${addConfig} config: ${instanceConfig}"
+                continue
+            }
+            log.debug("instanceConfig: ${instanceConfig}")
+            add.setConfigMap(cloudItem: cloudItem, instanceConfig: instanceConfig)
             adds << add
         }
 
@@ -145,5 +165,33 @@ class RecoveryPointSync {
     private updateMatchedRecoveryPoints(List<SyncTask.UpdateItem<BackupResult, Map>> updateItems) {
         log.debug "updateMatchedRecoveryPoints: ${updateItems.size()}"
         // azure doesn't support updating recovery points
+    }
+
+    def parseInterfacesToConfig(server) {
+        def interfaces = server.interfaces ?: []
+        interfaces.collect { nInterface ->
+            def parsedInterface = [
+                    primaryInterface: nInterface.primaryInterface,
+                    displayOrder:nInterface.displayOrder,
+                    network: [
+                            hasPool: nInterface.networkPool != null,
+                            dhcpServer: nInterface.dhcp
+                    ],
+                    ipAddress:nInterface?.ipAddress,
+                    networkInterfaceTypeId:nInterface?.type?.id,
+                    networkInterfaceTypeIdName:nInterface?.type?.name,
+                    ipMode: nInterface?.ipMode
+            ]
+            if(nInterface.network != null)
+                parsedInterface.network.id = 'network-' + nInterface.network.id
+            else if(nInterface.networkGroup != null)
+                parsedInterface.network.id = 'networkGroup-' + nInterface.networkGroup.id
+            if(nInterface.subnet != null)
+                parsedInterface.network.subnet = 'subnet-' + nInterface.subnet.id
+            if(nInterface.networkPool){
+                parsedInterface.network.pool = [id: nInterface.networkPool.id, name: nInterface.networkPool.name]
+            }
+            parsedInterface
+        }
     }
 }
