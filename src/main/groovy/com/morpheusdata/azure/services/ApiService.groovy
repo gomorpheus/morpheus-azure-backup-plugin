@@ -93,7 +93,7 @@ class ApiService {
             ]
             def headers = ['Content-Type':'application/x-www-form-urlencoded']
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, body:body, contentType: 'form'])
-            def results = client.callJsonApi(apiUrl, apiPath, null, null, requestOpts, 'POST')
+            def results = callApi(apiUrl, apiPath, requestOpts, 'POST', client)
             rtn.success = results?.success && results?.error != true
             if(rtn.success == true) {
                 rtn.results = results.data
@@ -126,11 +126,11 @@ class ApiService {
             client.networkProxy = authConfig.networkProxy
             def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
             def apiPath = '/subscriptions'
-            def apiVersion = authConfig.cloudType.code == 'azure' ? '2015-01-01' : '2018-05-01'
+            def apiVersion = '2022-12-01'
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callListApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
@@ -152,7 +152,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callListApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
@@ -174,7 +174,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion, $filter: "backupManagementType eq 'AzureIaasVM'"]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callListApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
@@ -196,7 +196,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'POST', client)
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.success = true
@@ -216,7 +216,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers])
 
-            def results = client.callJsonApi(opts.url, null, null, null, requestOpts, 'GET')
+            def results = callApi(opts.url, null, requestOpts, 'GET', client)
             if(results.success) {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
@@ -239,7 +239,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion, $filter: "backupManagementType eq 'AzureIaasVM'"]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callListApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
@@ -261,7 +261,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callListApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
@@ -292,7 +292,7 @@ class ApiService {
             ]
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'PUT', client)
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
@@ -323,7 +323,7 @@ class ApiService {
             ]
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'POST', client)
             if(results.success) {
                 rtn.results = results.headers?.'Azure-AsyncOperation'
                 rtn.statusCode = results.statusCode
@@ -354,7 +354,7 @@ class ApiService {
             ]
 
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'PUT', client)
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
@@ -378,7 +378,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'DELETE')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'DELETE', client)
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
@@ -412,7 +412,7 @@ class ApiService {
             ]
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'PUT')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'PUT', client)
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
@@ -436,7 +436,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success) {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
@@ -460,7 +460,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
 
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'POST', client)
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
@@ -484,7 +484,7 @@ class ApiService {
             def headers = buildHeaders(null, token, opts)
             def body = opts.body
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'POST')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'POST', client)
             log.info("restoreVm results: ${results}")
             if(results.success) {
                 log.info("results.headers: ${results.headers}")
@@ -509,7 +509,7 @@ class ApiService {
             def apiVersion = '2019-05-13'
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success) {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
@@ -532,7 +532,7 @@ class ApiService {
             def apiVersion = '2024-07-01' // opts.zone.zoneType.code == 'azure' ? '2019-07-01' : '2017-12-01'
             def headers = buildHeaders(null, token, opts)
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
-            def results = client.callJsonApi(authConfig.apiUrl, apiPath, null, null, requestOpts, 'GET')
+            def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
             if(results.success) {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
@@ -543,6 +543,39 @@ class ApiService {
             rtn.msg = e.message
         }
         return rtn
+    }
+
+    static callApi(String apiUrl, String apiPath, HttpApiClient.RequestOptions requestOpts, String method, HttpApiClient client) {
+        def maxRetries = 4
+        def retryCount = 0
+
+        def results = client.callJsonApi(apiUrl, apiPath, null, null, requestOpts, method)
+        while(results.errorCode == '429' && retryCount < maxRetries) {
+            // Azure Rate limiting updated in 2024 to a token bucket system, replenishing tokens every second
+            log.warn("Azure Rate Limit Reached... Sleeping 1 second and retrying...")
+            sleep(1000)
+            results = client.callJsonApi(apiUrl, apiPath, null, null, requestOpts, method)
+            retryCount++
+        }
+        return results
+    }
+
+    static callListApi(String apiUrl, String apiPath, HttpApiClient.RequestOptions requestOpts, String method, HttpApiClient client) {
+        def results = client.callJsonApi(apiUrl, apiPath, null, null, requestOpts, method)
+        // if nextLink then there is pagination
+        if(results.success && results.data.value && results.data.nextLink) {
+            def newRequestOpts = new HttpApiClient.RequestOptions([headers:requestOpts.headers])
+            while(results.data.nextLink) {
+                def nextResults = callApi(results.data.nextLink, null, newRequestOpts, 'GET', client)
+                if(nextResults.success && nextResults.data.value) {
+                    results.data.value.addAll(nextResults.data.value)
+                    results.data.nextLink = nextResults.data.nextLink
+                } else {
+                    break
+                }
+            }
+        }
+        return results
     }
 
     private getAzureProxy(Cloud cloud) {
