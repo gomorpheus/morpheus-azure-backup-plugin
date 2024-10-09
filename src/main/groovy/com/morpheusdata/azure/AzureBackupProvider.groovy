@@ -207,7 +207,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 		// scheduling and execution of the jobs. Replace the default job provider
 		// if jobs are to be managed on the external backup system.
 		if(!this.backupJobProvider) {
-			this.backupJobProvider = new DefaultBackupJobProvider(getPlugin(), morpheus);
+			this.backupJobProvider = new AzureBackupJobProvider(getPlugin(), morpheus, apiService)
 		}
 		return this.backupJobProvider
 	}
