@@ -191,6 +191,7 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				def results = apiService.deleteBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, policyId: backupJob.internalId])
 				if (results.success == true && results.statusCode == '202') {
 					rtn.success = true
+					rtn.data = [skipJob: true]
 				} else if (results.error?.message) {
 					log.error("deleteBackup error: ${results.error}")
 					rtn.msg = results.error.message
@@ -264,13 +265,13 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 		}
 		try {
 			def backupProvider = backup.backupProvider
-			def authConfig = apiService.getAuthConfig(backupProvider)
+			def authConfig = opts.authConfig ?: apiService.getAuthConfig(backupProvider)
 			def resourceGroup = backup.getConfigProperty('resourceGroup')
 			def vault = backup.getConfigProperty('vault')
 			def containerName = backup.getConfigProperty('containerName')
 			def protectedItemName = backup.getConfigProperty('protectedItemName')
 			def vmId = backup.getConfigProperty('vmId')
-			def client = new HttpApiClient()
+			def client = opts.client ?: new HttpApiClient()
 
 			def onDemandResults = apiService.triggerOnDemandBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backup.backupJob.internalId, client: client])
 			if(onDemandResults.success == true && onDemandResults.statusCode == '202') {
