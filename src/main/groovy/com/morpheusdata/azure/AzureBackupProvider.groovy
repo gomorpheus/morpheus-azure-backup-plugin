@@ -7,6 +7,7 @@ import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.AbstractBackupProvider
 import com.morpheusdata.core.backup.BackupJobProvider
 import com.morpheusdata.core.backup.DefaultBackupJobProvider
+import com.morpheusdata.model.BackupJob
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
@@ -111,7 +112,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	public Boolean getHasOptionalJob() { return false; }
 
 	/**
-	 * The backup provider supports scheduled backups. This is primarily used for display of hte schedules and providing
+	 * The backup provider supports scheduled backups. This is primarily used for display of the schedules and providing
 	 * options during the backup configuration steps.
 	 */
 	@Override
@@ -319,6 +320,12 @@ class AzureBackupProvider extends AbstractBackupProvider {
 			log.error("error refreshing backup provider {}::{}: {}", plugin.name, this.name, e)
 		}
 		return rtn
+	}
+
+	Collection<BackupJob> filterBackupJobs(Collection<BackupJob> backupJobs, Map opts) {
+		log.debug("filterBackupJobs: {}", backupJobs)
+
+		return backupJobs.findAll{it.getConfigProperty('vault') == opts['config[vault]'] && it.getConfigProperty('resourceGroup') == opts['config[resourceGroup]']}
 	}
 
 	private verifyAuthentication(BackupProviderModel backupProviderModel, Map opts) {
