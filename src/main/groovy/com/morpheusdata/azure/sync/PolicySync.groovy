@@ -54,7 +54,7 @@ class PolicySync {
                     }.onDelete { List<BackupJobIdentityProjection> removeItems ->
                         deleteBackupJobs(removeItems)
                     }.onUpdate { List<SyncTask.UpdateItem<BackupJob, Map>> updateItems ->
-                        updateMatchedBackupJobs(updateItems)
+                        updateMatchedBackupJobs(updateItems, vault)
                     }.onAdd { itemsToAdd ->
                         addMissingBackupJobs(itemsToAdd, vault)
                     }.withLoadObjectDetailsFromFinder { List<SyncTask.UpdateItemDto<BackupJobIdentityProjection, Map>> updateItems ->
@@ -82,7 +82,7 @@ class PolicySync {
             ]
 
             def add = new BackupJob(addConfig)
-            add.setConfigMap([cloudItem: cloudItem, vault: vault.name])
+            add.setConfigMap([cloudItem: cloudItem, vault: vault.name, resourceGroup: vault.getConfigProperty('resourceGroup')])
             adds << add
         }
 
@@ -100,7 +100,7 @@ class PolicySync {
         morpheusContext.async.backupJob.bulkRemove(removeItems).blockingGet()
     }
 
-    private updateMatchedBackupJobs(List<SyncTask.UpdateItem<BackupJob, Map>> updateItems) {
+    private updateMatchedBackupJobs(List<SyncTask.UpdateItem<BackupJob, Map>> updateItems, vault) {
         log.debug "updateMatchedBackupJobs: ${updateItems.size()}"
         def saveList = []
         try {
@@ -111,6 +111,14 @@ class PolicySync {
                 Boolean doSave = false
                 if (existingItem.name != masterItem.name) {
                     existingItem.name = masterItem.name
+                    doSave = true
+                }
+                if (existingItem.getConfigProperty('vault') != vault.name) {
+                    existingItem.setConfigProperty('vault', vault.name)
+                    doSave = true
+                }
+                if (existingItem.getConfigProperty('resourceGroup') != vault.getConfigProperty('resourceGroup')) {
+                    existingItem.setConfigProperty('resourceGroup', vault.getConfigProperty('resourceGroup'))
                     doSave = true
                 }
                 def cronExpression = parseCronExpression(masterItem.properties.schedulePolicy)
