@@ -491,6 +491,8 @@ class ApiService {
                 rtn.results = results.headers?.'Azure-AsyncOperation'
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
             }
         } catch (e) {
             log.error("restoreVM error: ${e}", e)

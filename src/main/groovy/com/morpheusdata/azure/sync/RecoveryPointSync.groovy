@@ -124,6 +124,7 @@ class RecoveryPointSync {
                 startDate: createdDate,
                 endDay: createdDay,
                 endDate: createdDate,
+                backupSetId: backup.backupSetId ?: BackupResultUtility.generateBackupResultSetId()
             ]
 
             def add = new BackupResult(addConfig)
