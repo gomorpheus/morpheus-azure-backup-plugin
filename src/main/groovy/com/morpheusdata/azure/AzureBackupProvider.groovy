@@ -116,7 +116,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 * options during the backup configuration steps.
 	 */
 	@Override
-	public Boolean getHasSchedule() { return true; }
+	public Boolean getHasSchedule() { return false; }
 
 	/**
 	 * The backup provider supports running multiple workload backups within an encapsulating job.
