@@ -159,7 +159,15 @@ class RecoveryPointSync {
 
     private deleteRecoveryPoints(List<BackupResult> removeItems) {
         log.debug "deleteRecoveryPoints: ${removeItems}"
-        // azure doesn't support deleting recovery points
+
+        // only delete completed recovery points
+        def itemsToRemove = []
+        removeItems.each { BackupResult removeItem ->
+            if(removeItem.status == BackupResult.Status.SUCCEEDED.toString()) {
+                itemsToRemove << removeItem
+            }
+        }
+        morpheusContext.async.backup.backupResult.bulkRemove(itemsToRemove).blockingGet()
     }
 
     private updateMatchedRecoveryPoints(List<SyncTask.UpdateItem<BackupResult, Map>> updateItems) {
