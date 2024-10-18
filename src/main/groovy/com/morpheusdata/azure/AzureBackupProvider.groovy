@@ -325,7 +325,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	Collection<BackupJob> filterBackupJobs(Collection<BackupJob> backupJobs, Map opts) {
 		log.debug("filterBackupJobs: {}", backupJobs)
 
-		return backupJobs.findAll{it.getConfigProperty('vault') == opts['config[vault]'] && it.getConfigProperty('resourceGroup') == opts['config[resourceGroup]']}
+		return backupJobs.findAll{it.getConfigProperty('vault') == opts.config?.vault && it.getConfigProperty('resourceGroup') == opts.config?.resourceGroup}
 	}
 
 	private verifyAuthentication(BackupProviderModel backupProviderModel, Map opts) {
