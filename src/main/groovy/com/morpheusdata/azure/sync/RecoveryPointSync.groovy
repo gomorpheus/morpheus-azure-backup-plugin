@@ -88,7 +88,7 @@ class RecoveryPointSync {
         def adds = []
         for(cloudItem in itemsToAdd) {
             if(!server) {
-                log.error("server not found for backup: ${backup}")
+                log.warn("server not found for backup: ${backup}")
                 continue
             }
             Date createdDate = AzureBackupUtility.parseDate(cloudItem.properties.recoveryPointTime)
