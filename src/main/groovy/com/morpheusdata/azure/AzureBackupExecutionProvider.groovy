@@ -5,6 +5,7 @@ import com.morpheusdata.core.MorpheusContext
 import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.BackupExecutionProvider
 import com.morpheusdata.core.backup.response.BackupExecutionResponse
+import com.morpheusdata.core.backup.util.BackupResultUtility
 import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.Backup
 import com.morpheusdata.model.BackupResult
@@ -287,6 +288,7 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 						keepGoing = false
 						jobId = asyncResponse.results?.properties?.jobId
 						rtn.data.backupResult.setConfigProperty("backupJobId", jobId)
+						rtn.data.backupResult.backupSetId = BackupResultUtility.generateBackupResultSetId()
 						rtn.data.updates = true
 					}
 
