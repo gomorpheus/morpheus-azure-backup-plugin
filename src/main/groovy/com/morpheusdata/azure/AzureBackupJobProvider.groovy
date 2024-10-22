@@ -59,8 +59,17 @@ class AzureBackupJobProvider implements BackupJobProvider {
 
     @Override
     ServiceResponse deleteBackupJob(BackupJob backupJobModel, Map opts) {
-        log.info("deleteBackupJob: {}", backupJobModel)
-        return ServiceResponse.success()
+        log.debug("deleteBackupJob: {}", backupJobModel)
+
+        def rtn = ServiceResponse.prepare()
+        def authConfig = apiService.getAuthConfig(backupJobModel.backupProvider)
+        def deleteResponse = apiService.deletePolicy(authConfig, [backupJob: backupJobModel])
+        if(deleteResponse.success) {
+            rtn.success = true
+        } else {
+            rtn.msg = "Failed to delete backup job ${backupJobModel.id}"
+        }
+        return rtn
     }
 
     @Override

@@ -185,6 +185,31 @@ class ApiService {
         return rtn
     }
 
+    static deletePolicy(Map authConfig, Map opts) {
+        def rtn = [success: false]
+        try {
+            HttpApiClient client = opts.client ?: new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
+            def apiPath = opts.backupJob.internalId
+            if(apiPath) {
+                def apiVersion = '2024-04-01'
+                def headers = buildHeaders(null, token, opts)
+                HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion]])
+
+                def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'DELETE', client)
+                if(results.success) {
+                    rtn.success = true
+                }
+            } else {
+                log.error("No internalId for backup job: ${opts.backupJob?.id}")
+            }
+        } catch (e) {
+            log.error("deletePolicy error: ${e}", e)
+        }
+        return rtn
+    }
+
     static triggerCacheProtectableVms(Map authConfig, Map opts) {
         def rtn = [success: false]
         try {
