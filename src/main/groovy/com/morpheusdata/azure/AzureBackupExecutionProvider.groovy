@@ -56,26 +56,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 		def client = new HttpApiClient()
 		def backupProvider = backup.backupProvider
 		def authConfig = apiService.getAuthConfig(backupProvider)
-
-		def cacheResponse = apiService.triggerCacheProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
-		if(cacheResponse.success == true) {
-			sleep(1500)
-			def attempts = 0
-			def keepGoing = true
-			while(keepGoing) {
-				def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cacheResponse.results, client: client])
-				// 204 means async task is done
-				if((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 20) {
-					keepGoing = false
-				}
-
-				if(keepGoing) {
-					sleep(1500)
-					attempts++
-				}
-			}
-		}
-
 		def server
 		if(backup.computeServerId) {
 			server = morpheusContext.services.computeServer.get(backup.computeServerId)
@@ -83,10 +63,11 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			def workload = morpheusContext.services.workload.get(backup.containerId)
 			server = morpheusContext.services.computeServer.get(workload?.server.id)
 		}
-
 		def protectedItemName
 		def containerName
 		def vmId
+
+		// check if the protectable vm is already cached
 		def protectableVmsResponse = apiService.listProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
 		if(protectableVmsResponse.success == true) {
 			for (protectableVm in protectableVmsResponse.results?.value) {
@@ -102,7 +83,45 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			}
 		}
 
-		if (!protectedItemName) {
+		// if not cached, trigger cache protectable vms
+		if(!protectedItemName) {
+			def cacheResponse = apiService.triggerCacheProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+			if (cacheResponse.success == true) {
+				sleep(1500)
+				def attempts = 0
+				def keepGoing = true
+				while (keepGoing) {
+					def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cacheResponse.results, client: client])
+					// 204 means async task is done
+					if ((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 20) {
+						keepGoing = false
+					}
+
+					if (keepGoing) {
+						sleep(1500)
+						attempts++
+					}
+				}
+			}
+
+			// check if the protectable vm is now cached
+			protectableVmsResponse = apiService.listProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
+			if(protectableVmsResponse.success == true) {
+				for (protectableVm in protectableVmsResponse.results?.value) {
+					if (protectableVm.properties.friendlyName == server.externalId) {
+						protectedItemName = 'VM;' + protectableVm.name
+						containerName = 'IaasVMContainer;' + protectableVm.name
+						vmId = protectableVm.properties.virtualMachineId
+						backup.setConfigProperty("protectedItemName", protectedItemName)
+						backup.setConfigProperty("containerName", containerName)
+						backup.setConfigProperty("vmId", vmId)
+						break
+					}
+				}
+			}
+		}
+
+		if(!protectedItemName) {
 			log.error("protectable vm not found for: ${server.externalId}")
 			return ServiceResponse.error("protectable vm not found")
 		}

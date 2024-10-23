@@ -7,10 +7,14 @@ import com.morpheusdata.core.Plugin
 import com.morpheusdata.core.backup.AbstractBackupProvider
 import com.morpheusdata.core.backup.BackupJobProvider
 import com.morpheusdata.core.backup.DefaultBackupJobProvider
+import com.morpheusdata.core.data.DataFilter
+import com.morpheusdata.core.data.DataQuery
+import com.morpheusdata.core.util.HttpApiClient
 import com.morpheusdata.model.BackupJob
 import com.morpheusdata.model.BackupProvider as BackupProviderModel
 import com.morpheusdata.model.Icon
 import com.morpheusdata.model.OptionType
+import com.morpheusdata.model.ReferenceData
 import com.morpheusdata.response.ServiceResponse
 import com.morpheusdata.azure.services.ApiService
 import com.morpheusdata.azure.sync.PolicySync
@@ -302,6 +306,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 					new PolicySync(backupProviderModel, apiService, plugin).execute()
 					new VaultSync(backupProviderModel, apiService, plugin).execute()
 					new RecoveryPointSync(backupProviderModel, apiService, plugin).execute()
+					triggerCacheAllVaultProtectableVms(backupProviderModel)
 
 					rtn.success = true
 				} else {
@@ -342,5 +347,19 @@ class AzureBackupProvider extends AbstractBackupProvider {
 				rtn.invalidLogin = true
 		}
 		return rtn
+	}
+
+	private triggerCacheAllVaultProtectableVms(BackupProviderModel backupProviderModel) {
+		List<ReferenceData> vaults = morpheus.services.referenceData.list(new DataQuery().withFilters([
+				new DataFilter('category', "${backupProviderModel.type.code}.backup.vault.${backupProviderModel.id}"),
+				new DataFilter('account.id', backupProviderModel.account.id),
+				new DataFilter('refType', 'ComputeZonePool')
+		]))
+		def authConfig = apiService.getAuthConfig(backupProviderModel)
+		def client = new HttpApiClient()
+
+		for(ReferenceData vault : vaults) {
+			apiService.triggerCacheProtectableVms(authConfig, [vault: vault.name, resourceGroup: vault.getConfigProperty('resourceGroup'), client: client])
+		}
 	}
 }
