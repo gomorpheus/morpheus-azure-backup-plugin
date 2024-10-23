@@ -140,15 +140,9 @@ class PolicySync {
 
     private def parseCronExpression(schedulePolicy) {
         def cronExpression
-
-        def minHourCron
-        if(schedulePolicy.scheduleRunTimes?.size() == 1) {
-            def datetime = ZonedDateTime.parse(schedulePolicy.scheduleRunTimes.first(), DateTimeFormatter.ISO_ZONED_DATE_TIME)
-            minHourCron = "${datetime.minute} ${datetime.hour}"
-        }
-        if(schedulePolicy.scheduleRunFrequency == 'Daily') {
-            cronExpression = minHourCron + " * * *"
-        } else if(schedulePolicy.scheduleRunFrequency == 'Weekly') {
+        try {
+            def minHourCron
+            def schedulePolicyType = schedulePolicy.schedulePolicyType
             def dayMap = [
                     'Sunday': '0',
                     'Monday': '1',
@@ -158,30 +152,76 @@ class PolicySync {
                     'Friday': '5',
                     'Saturday': '6'
             ]
-            StringJoiner joiner = new StringJoiner(",");
-            schedulePolicy.scheduleRunDays.each { day ->
-                joiner.add(dayMap[day])
-            }
-            def daysCron = joiner.toString()
-            cronExpression = minHourCron + " * * " + daysCron
-        } else if(schedulePolicy.scheduleRunFrequency == 'Hourly') {
-            def datetime = ZonedDateTime.parse(schedulePolicy.hourlySchedule.scheduleWindowStartTime, DateTimeFormatter.ISO_ZONED_DATE_TIME)
-            def interval = schedulePolicy.hourlySchedule.interval
-            def windowDuration = schedulePolicy.hourlySchedule.scheduleWindowDuration
-            def hour = datetime.hour
-            def StringJoiner hours = new StringJoiner(",");
-            while(windowDuration > 0) {
-                hours.add(hour.toString())
-                hour += interval
-                if(hour > 23) {
-                    hour = hour - 24
+
+            if(schedulePolicyType == 'SimpleSchedulePolicy') { // v1
+                if(schedulePolicy.scheduleRunTimes) {
+                    def datetime = ZonedDateTime.parse(schedulePolicy.scheduleRunTimes.first(), DateTimeFormatter.ISO_ZONED_DATE_TIME)
+                    if(datetime) {
+                        minHourCron = "${datetime.minute} ${datetime.hour}"
+                    }
                 }
-                windowDuration -= interval
+                if(schedulePolicy.scheduleRunFrequency == 'Daily') {
+                    if(minHourCron) {
+                        cronExpression = minHourCron + " * * *"
+                    }
+                }
+                if(schedulePolicy.scheduleRunFrequency == 'Weekly' && schedulePolicy.scheduleRunDays) {
+                    StringJoiner joiner = new StringJoiner(",");
+                    schedulePolicy.scheduleRunDays.each { day ->
+                        joiner.add(dayMap[day])
+                    }
+                    def daysCron = joiner.toString()
+                    if(daysCron && minHourCron) {
+                        cronExpression = minHourCron + " * * " + daysCron
+                    }
+                }
+            } else if(schedulePolicyType == 'SimpleSchedulePolicyV2') { // v2
+                if (schedulePolicy.scheduleRunFrequency == 'Hourly' && schedulePolicy.hourlySchedule) {
+                    def datetime = ZonedDateTime.parse(schedulePolicy.hourlySchedule.scheduleWindowStartTime, DateTimeFormatter.ISO_ZONED_DATE_TIME)
+                    def interval = schedulePolicy.hourlySchedule.interval
+                    def windowDuration = schedulePolicy.hourlySchedule.scheduleWindowDuration
+                    if(datetime && interval && windowDuration) {
+                        def hour = datetime.hour
+                        StringJoiner joiner = new StringJoiner(",");
+                        while (windowDuration > 0) {
+                            joiner.add(hour.toString())
+                            hour += interval
+                            if (hour > 23) {
+                                hour = hour - 24
+                            }
+                            windowDuration -= interval
+                        }
+
+                        def hoursCron = joiner.toString()
+                        if(hoursCron) {
+                            cronExpression = "${datetime.minute} ${hoursCron} * * *"
+                        }
+                    }
+                } else if (schedulePolicy.scheduleRunFrequency == 'Daily' && schedulePolicy.dailySchedule) {
+                    def datetime = ZonedDateTime.parse(schedulePolicy.dailySchedule.scheduleRunTimes.first(), DateTimeFormatter.ISO_ZONED_DATE_TIME)
+                    if(datetime) {
+                        minHourCron = "${datetime.minute} ${datetime.hour}"
+                        cronExpression = minHourCron + " * * *"
+                    }
+                } else if (schedulePolicy.scheduleRunFrequency == 'Weekly' && schedulePolicy.weeklySchedule) {
+                    def datetime = ZonedDateTime.parse(schedulePolicy.weeklySchedule.scheduleRunTimes.first(), DateTimeFormatter.ISO_ZONED_DATE_TIME)
+                    if(datetime) {
+                        minHourCron = "${datetime.minute} ${datetime.hour}"
+
+                        StringJoiner joiner = new StringJoiner(",");
+                        schedulePolicy.weeklySchedule.scheduleRunDays.each { day ->
+                            joiner.add(dayMap[day])
+                        }
+                        def daysCron = joiner.toString()
+                        if (daysCron) {
+                            cronExpression = minHourCron + " * * " + daysCron
+                        }
+                    }
+                }
             }
-
-            cronExpression = "${datetime.minute} ${hours.toString()} * * *"
+        } catch (e) {
+            log.error("Error parsing cron expression: ${e}", e)
         }
-
         return cronExpression
     }
 }
