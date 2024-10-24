@@ -62,7 +62,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	Icon getIcon() {
-		return new Icon(path:"icon.svg", darkPath: "icon-dark.svg")
+		return new Icon(path:"Azure-Backup-Center.svg", darkPath: "Azure-Backup-Center.svg")
 	}
 
 	/**
