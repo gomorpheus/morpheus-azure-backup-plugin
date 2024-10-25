@@ -211,7 +211,6 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				def results = apiService.deleteBackup(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, policyId: backupJob.internalId])
 				if (results.success == true && results.statusCode == '202') {
 					rtn.success = true
-					rtn.data = [skipJob: true]
 				} else if (results.error?.message) {
 					log.error("deleteBackup error: ${results.error}")
 					rtn.msg = results.error.message
@@ -467,5 +466,4 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 	ServiceResponse extractBackup(BackupResult backupResultModel, Map opts) {
 		return ServiceResponse.success()
 	}
-
 }		
