@@ -122,8 +122,8 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 		}
 
 		if(!protectedItemName) {
-			log.error("protectable vm not found for: ${server.externalId}")
-			return ServiceResponse.error("protectable vm not found")
+			log.error("Protectable vm not found for ${server.externalId}. Check existing backups")
+			return ServiceResponse.error("Protectable vm not found for ${server.externalId}. Check existing backups", [error: "Protectable vm not found for ${server.externalId}. Check existing backups"])
 		}
 		return ServiceResponse.success(backup)
 	}
