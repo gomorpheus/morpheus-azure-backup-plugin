@@ -416,6 +416,13 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 							}
 						}
 					}
+					else if(backupJob.properties.status == 'Failed') {
+						def errorString = backupJob.properties.errorDetails?.errorString
+						if(errorString) {
+							rtn.data.backupResult.errorMsg = errorDetails.errorString
+							doUpdate = true
+						}
+					}
 					rtn.data.updates = doUpdate
 					rtn.success = true
 				}
