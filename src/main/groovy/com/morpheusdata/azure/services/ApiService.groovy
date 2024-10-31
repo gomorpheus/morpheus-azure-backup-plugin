@@ -134,6 +134,9 @@ class ApiService {
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch(e) {
             log.error("listSubscriptions error: ${e}", e)
@@ -156,6 +159,9 @@ class ApiService {
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch(e) {
             log.error("listVaults error: ${e}", e)
@@ -178,6 +184,9 @@ class ApiService {
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("listPolicies error: ${e}", e)
@@ -200,6 +209,9 @@ class ApiService {
                 def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'DELETE', client)
                 if(results.success) {
                     rtn.success = true
+                } else {
+                    rtn.error = results.data?.error
+                    rtn.errorCode = results.errorCode
                 }
             } else {
                 log.error("No internalId for backup job: ${opts.backupJob?.id}")
@@ -225,6 +237,9 @@ class ApiService {
             if(results.success) {
                 rtn.results = results.headers?.Location
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("cacheProtectableVms error: ${e}", e)
@@ -246,6 +261,9 @@ class ApiService {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("getAsyncOpertationStatus error: ${e}", e)
@@ -268,6 +286,9 @@ class ApiService {
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("listProtectableVms error: ${e}", e)
@@ -290,6 +311,9 @@ class ApiService {
             if(results.success && results.data) {
                 rtn.results = results.data
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("listProtectedVms error: ${e}", e)
@@ -324,6 +348,7 @@ class ApiService {
                 rtn.success = true
             } else {
                 rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("enableProtection error: ${e}", e)
@@ -353,6 +378,9 @@ class ApiService {
                 rtn.results = results.headers?.'Azure-AsyncOperation'
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("triggerOnDemandBackup error: ${e}", e)
@@ -384,6 +412,9 @@ class ApiService {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("removeProtection error: ${e}", e)
@@ -408,6 +439,9 @@ class ApiService {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("deleteBackup error: ${e}", e)
@@ -442,6 +476,9 @@ class ApiService {
                 rtn.results = results.headers?.Location
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("undoDeleteBackup error: ${e}", e)
@@ -466,6 +503,9 @@ class ApiService {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("getBackupJob error: ${e}", e)
@@ -487,9 +527,12 @@ class ApiService {
 
             def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'POST', client)
             if(results.success) {
-                rtn.results = results.headers?.Location
+                rtn.results = results.headers?.'Azure-AsyncOperation'
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("cancelBackupJob error: ${e}", e)
@@ -510,14 +553,13 @@ class ApiService {
             def body = opts.body
             HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion], body: body])
             def results = callApi(authConfig.apiUrl, apiPath, requestOpts, 'POST', client)
-            log.info("restoreVm results: ${results}")
             if(results.success) {
-                log.info("results.headers: ${results.headers}")
                 rtn.results = results.headers?.'Azure-AsyncOperation'
                 rtn.statusCode = results.statusCode
                 rtn.success = true
             } else {
                 rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("restoreVM error: ${e}", e)
@@ -541,6 +583,9 @@ class ApiService {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("getVmRecoveryPoints error: ${e}", e)
@@ -564,6 +609,9 @@ class ApiService {
                 rtn.results = results.data
                 rtn.statusCode = results.statusCode
                 rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
             }
         } catch (e) {
             log.error("getServer error: ${e}", e)

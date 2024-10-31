@@ -318,9 +318,11 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			} else if (onDemandResults.error?.message) {
 				log.error("executeBackup error: ${onDemandResults.error}")
 				rtn.error = onDemandResults.error.message
+				rtn.msg = onDemandResults.error.message
 			} else {
 				log.error("executeBackup error: ${onDemandResults}")
 				rtn.error = "Error executing backup"
+				rtn.msg = "Error executing backup"
 			}
 		}
 		catch (e) {
@@ -354,6 +356,7 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				def client = new HttpApiClient()
 				def getBackupJobResult = apiService.getBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId, client: client])
 				if(getBackupJobResult.success == true && getBackupJobResult.results) {
+					rtn.success = true
 					def backupJob = getBackupJobResult.results
 					boolean doUpdate = false
 
@@ -419,14 +422,29 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 					else if(backupJob.properties.status == 'Failed') {
 						def errorString = backupJob.properties.errorDetails?.errorString
 						if(errorString) {
-							rtn.data.backupResult.errorMsg = errorDetails.errorString
+							rtn.data.backupResult.errorMessage = errorString
+							rtn.msg = errorString
+							rtn.success = false
 							doUpdate = true
 						}
 					}
 					rtn.data.updates = doUpdate
-					rtn.success = true
+				}
+				else if(getBackupJobResult.errorCode) {
+					rtn.msg = "Failed to get backup job with error code: ${getBackupJobResult.errorCode}"
+				}
+				else if(getBackupJobResult.statusCode) {
+					rtn.msg = "Failed to get backup job with status code: ${getBackupJobResult.statusCode}"
+				}
+				else {
+					rtn.msg = "Failed to get backup job"
 				}
 			}
+			else {
+				rtn.msg = "No backup job id found"
+			}
+		} else {
+			rtn.msg = "Azure backup provider is disabled"
 		}
 		return rtn
 	}
@@ -449,11 +467,31 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				def backupJobId = backupResult.externalId ?: backupResult.getConfigProperty("backupJobId")
 				def resourceGroup = backup.getConfigProperty('resourceGroup')
 				def vault = backup.getConfigProperty('vault')
+				def client = new HttpApiClient()
 
-				def result = apiService.cancelBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
-				log.debug("cancelBackup : result: ${result}")
-				if(result.success == true && result.statusCode == '202') {
+				if(backupResult.status = 'QUEUED' && !backupJobId) {
 					response.success = true
+					return response
+				}
+				def cancelResponse = apiService.cancelBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
+				if (cancelResponse.success == true) {
+					sleep(200)
+					def attempts = 0
+					def keepGoing = true
+					while (keepGoing) {
+						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cancelResponse.results, client: client])
+						if ((asyncResponse.success == true && asyncResponse.results?.status) || attempts > 5) {
+							keepGoing = false
+							if(asyncResponse.results?.status == 'Succeeded') {
+								response.success = true
+							}
+						}
+
+						if (keepGoing) {
+							sleep(200)
+							attempts++
+						}
+					}
 				}
 			} catch(e) {
 				log.error("cancelBackup error: ${e}", e)
