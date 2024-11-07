@@ -475,15 +475,16 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				}
 				def cancelResponse = apiService.cancelBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
 				if (cancelResponse.success == true) {
-					sleep(200)
+					sleep(100)
 					def attempts = 0
 					def keepGoing = true
 					while (keepGoing) {
 						def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cancelResponse.results, client: client])
-						if ((asyncResponse.success == true && asyncResponse.results?.status) || attempts > 5) {
+						if ((asyncResponse.success == true && asyncResponse.results?.status) || attempts > 10) {
 							keepGoing = false
 							if(asyncResponse.results?.status == 'Succeeded') {
 								response.success = true
+								response.data = [status: BackupResult.Status.CANCEL_REQUESTED.toString()]
 							}
 						}
 
