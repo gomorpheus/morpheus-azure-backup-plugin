@@ -155,6 +155,19 @@ class RecoveryPointSync {
             if(!result.success) {
                 log.error "Error adding backup results: ${result.errorCode} - ${result.msg}"
             }
+
+            def lastResult = morpheusContext.services.backup.backupResult.find(
+                new DataQuery().withFilters([
+                    new DataFilter('backup.id', '=', backup.id),
+                    new DataFilter('account.id', '=', backupProviderModel.account.id),
+                ]).withSort('startDate', DataQuery.SortOrder.desc)
+            )
+
+            if(lastResult && backup.lastResult?.id != lastResult.id) {
+                backup.lastResult = lastResult
+                backup.lastBackupResultId = String.valueOf(lastResult.id)
+                morpheusContext.services.backup.save(backup)
+            }
         }
     }
 
