@@ -29,7 +29,7 @@ class AzureBackupPlugin extends Plugin {
 
     @Override
     void initialize() {
-        this.setName("Azure Backup")
+        this.setName("Azure")
         this.registerProvider(new AzureBackupProvider(this,this.morpheus))
         this.registerProvider(new VaultDatasetProvider(this,this.morpheus))
         this.registerProvider(new BackupJobDatasetProvider(this,this.morpheus))

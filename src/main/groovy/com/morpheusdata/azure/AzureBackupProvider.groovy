@@ -53,7 +53,7 @@ class AzureBackupProvider extends AbstractBackupProvider {
 	 */
 	@Override
 	String getName() {
-		return 'Azure Backup'
+		return 'Azure'
 	}
 
 	/**

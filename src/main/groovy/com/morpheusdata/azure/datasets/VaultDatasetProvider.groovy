@@ -15,10 +15,10 @@ import io.reactivex.rxjava3.core.Observable
 @Slf4j
 class VaultDatasetProvider extends AbstractDatasetProvider<ReferenceData, String> {
 
-    public static final providerName = 'Azure Backup Vault Dataset Provider'
+    public static final providerName = 'Azure Vault Dataset Provider'
     public static final providerNamespace = 'azureBackup'
     public static final providerKey = 'azureBackupVaults'
-    public static final providerDescription = 'Get available vaults from Azure Backup'
+    public static final providerDescription = 'Get available vaults from Azure'
 
     VaultDatasetProvider(AzureBackupPlugin plugin, MorpheusContext morpheus) {
         this.plugin = plugin

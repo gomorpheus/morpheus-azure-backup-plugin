@@ -14,10 +14,10 @@ import io.reactivex.rxjava3.core.Observable
 @Slf4j
 class BackupJobDatasetProvider extends AbstractDatasetProvider<BackupJob, Long> {
 
-    public static final providerName = 'Azure Backup Backup Job Dataset Provider'
+    public static final providerName = 'Azure BackupJob Dataset Provider'
     public static final providerNamespace = 'azureBackup'
     public static final providerKey = 'azureBackupJobs'
-    public static final providerDescription = 'Get available backup jobs from Azure Backup'
+    public static final providerDescription = 'Get available backup jobs from Azure'
 
     BackupJobDatasetProvider(AzureBackupPlugin plugin, MorpheusContext morpheus) {
         this.plugin = plugin
