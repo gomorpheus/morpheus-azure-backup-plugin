@@ -196,7 +196,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 				def keepGoing = true
 				while(keepGoing) {
 					def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: restoreResponse.results, client: client])
-					log.info("asyncResponse: ${asyncResponse}")
+					log.debug("asyncResponse: ${asyncResponse}")
 					if((asyncResponse.success == true && asyncResponse.results?.properties?.jobId) || attempts > 9) {
 						keepGoing = false
 						jobId = asyncResponse.results?.properties?.jobId
@@ -270,7 +270,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			def vault = backup.getConfigProperty('vault')
 			if(backupJobId) {
 				def getBackupJobResult = apiService.getBackupJob(authConfig, [resourceGroup: resourceGroup, vault: vault, jobId: backupJobId])
-				log.info("getBackupJobResult: ${getBackupJobResult}")
+				log.debug("getBackupJobResult: ${getBackupJobResult}")
 				if (getBackupJobResult.success == true && getBackupJobResult.results) {
 					def backupJob = getBackupJobResult.results
 					boolean doUpdate = false

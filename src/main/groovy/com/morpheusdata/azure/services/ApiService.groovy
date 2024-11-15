@@ -513,6 +513,33 @@ class ApiService {
         return rtn
     }
 
+    static listBackupJobs(Map authConfig, Map opts) {
+        def rtn = [success: false]
+
+        try {
+            HttpApiClient client = opts.client ?: new HttpApiClient()
+            client.networkProxy = authConfig.networkProxy
+            def token = authConfig.token ?: getApiToken(authConfig, [client: client])?.token
+            def apiPath = "/subscriptions/${authConfig.subscriberId}/resourceGroups/${opts.resourceGroup}/providers/Microsoft.RecoveryServices/vaults/${opts.vault}/backupjobs"
+            def apiVersion = '2019-05-13'
+            def headers = buildHeaders(null, token, opts)
+            def filter = opts.filter ?: "backupManagementType eq 'AzureIaasVM'"
+            HttpApiClient.RequestOptions requestOpts = new HttpApiClient.RequestOptions([headers:headers, queryParams: ['api-version': apiVersion, $filter: filter]])
+
+            def results = callListApi(authConfig.apiUrl, apiPath, requestOpts, 'GET', client)
+            if(results.success && results.data) {
+                rtn.results = results.data
+                rtn.success = true
+            } else {
+                rtn.error = results.data?.error
+                rtn.errorCode = results.errorCode
+            }
+        } catch (e) {
+            log.error("listBackupJobs error: ${e}", e)
+        }
+        return rtn
+    }
+
     static cancelBackupJob(Map authConfig, Map opts) {
         def rtn = [success: false]
 

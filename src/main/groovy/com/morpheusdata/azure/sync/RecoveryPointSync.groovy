@@ -13,7 +13,7 @@ import com.morpheusdata.model.Backup
 import com.morpheusdata.model.BackupProvider
 import com.morpheusdata.model.BackupResult
 import groovy.util.logging.Slf4j
-import java.time.temporal.ChronoUnit
+import java.text.SimpleDateFormat
 import com.morpheusdata.core.backup.util.BackupResultUtility
 
 @Slf4j
@@ -70,7 +70,7 @@ class RecoveryPointSync {
                     }.onUpdate { List<SyncTask.UpdateItem<BackupResult, Map>> updateItems ->
                         updateMatchedRecoveryPoints(updateItems)
                     }.onAdd { itemsToAdd ->
-                        addMissingRecoveryPoints(itemsToAdd, backup, server, inProgressItems)
+                        addMissingRecoveryPoints(itemsToAdd, backup, server, inProgressItems, [authConfig: authConfig, resourceGroup: resourceGroup, vault: vault, client: client, containerName: containerName])
                     }.withLoadObjectDetailsFromFinder { List<SyncTask.UpdateItemDto<BackupResult, Map>> updateItems ->
                         return morpheusContext.async.backup.backupResult.list( new DataQuery(backupProviderModel.account).withFilter("id", 'in', updateItems.collect { it.existingItem.id }))
                     }.start()
@@ -83,9 +83,25 @@ class RecoveryPointSync {
         }
     }
 
-    private addMissingRecoveryPoints(itemsToAdd, backup, server, inProgressItems) {
+    private addMissingRecoveryPoints(itemsToAdd, backup, server, inProgressItems, opts) {
         log.debug "addMissingRecoveryPoints: ${itemsToAdd}"
         def adds = []
+        if(itemsToAdd.size() == 0){
+            return
+        }
+
+        itemsToAdd = itemsToAdd.sort { a, b -> AzureBackupUtility.parseDate(a.properties.recoveryPointTime) <=> AzureBackupUtility.parseDate(b.properties.recoveryPointTime) }
+        def firstRecoveryDate = AzureBackupUtility.parseDate(itemsToAdd.first().properties.recoveryPointTime)
+        def searchStartDate = firstRecoveryDate.toLocalDateTime().minusMinutes(1).toDate()
+        def searchEndDate = AzureBackupUtility.parseDate(itemsToAdd.last().properties.recoveryPointTime)
+        def dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss a")
+        def filter = "startTime eq '${dateFormat.format(searchStartDate)}' and endTime eq '${dateFormat.format(searchEndDate)}' and operation eq 'Backup' and backupManagementType eq 'AzureIaasVM' and status eq 'Completed'"
+        def backupJobsResults = apiService.listBackupJobs(opts.authConfig, [resourceGroup: opts.resourceGroup, vault: opts.vault, filter: filter, client: opts.client])
+        if(!backupJobsResults.success) {
+            log.error "Error getting backup jobs: ${backupJobsResults.errorCode} - ${backupJobsResults.msg}"
+            return
+        }
+
         for(cloudItem in itemsToAdd) {
             if(!server) {
                 log.warn("server not found for backup: ${backup}")
@@ -104,7 +120,7 @@ class RecoveryPointSync {
             if(skipItem) {
                 continue
             }
-            Date createdDay = createdDate ? Date.from(createdDate.toInstant().truncatedTo(ChronoUnit.DAYS)) : null
+            Date createdDay = createdDate ? createdDate.toLocalDate().atStartOfDay().toDate() : null
             def addConfig = [
                 zoneId: backup.zoneId,
                 status: BackupResult.Status.SUCCEEDED,
@@ -128,6 +144,39 @@ class RecoveryPointSync {
                 source: 'azure',
             ]
 
+            // remove IaasVMContainer; from containerName
+            def containerName = opts?.containerName?.indexOf("IaasVMContainer;") >= -1 ? opts.containerName.substring(opts.containerName.indexOf("IaasVMContainer;") + 16) : opts.containerName
+            def backupJob
+            // match backup job that started less than a minute before the recovery point
+            def matchedBackupJobs = backupJobsResults.results?.value?.findAll {
+                it.properties.containerName == containerName &&
+                AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isBefore(createdDate.toInstant()) &&
+                AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isAfter(createdDate.toInstant().minusSeconds(60))
+            }
+            if(matchedBackupJobs.size() == 1) {
+                backupJob = matchedBackupJobs.first()
+            }
+
+            if(backupJob) {
+                // need to individually fetch backup job as list doesn't include size
+                def getBackupJobResult = apiService.getBackupJob(opts.authConfig, [resourceGroup: opts.resourceGroup, vault: opts.vault, jobId: backupJob.name, client: opts.client])
+                if(getBackupJobResult.success == true && getBackupJobResult.results) {
+                    backupJob = getBackupJobResult.results
+
+                    def backupSize = backupJob.properties.extendedInfo?.propertyBag?.'Backup Size'
+                    if(backupSize) {
+                        addConfig.sizeInMb = backupSize.split(" MB")[0] as Long
+                    }
+
+                    if(backupJob.properties.startTime && backupJob.properties.endTime) {
+                        def startDate = AzureBackupUtility.parseDate(backupJob.properties.startTime)
+                        def endDate = AzureBackupUtility.parseDate(backupJob.properties.endTime)
+                        addConfig.startDate = startDate
+                        addConfig.endDate = endDate
+                        addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
+                    }
+                }
+            }
             def add = new BackupResult(addConfig)
 
             // build condensed config of what is needed for the recovery point
@@ -145,7 +194,12 @@ class RecoveryPointSync {
                 continue
             }
             log.debug("instanceConfig: ${instanceConfig}")
-            add.setConfigMap(cloudItem: cloudItem, instanceConfig: instanceConfig)
+
+            def config = [cloudItem: cloudItem, instanceConfig: instanceConfig]
+            if(backupJob){
+                config.backupJobId = backupJob.name
+            }
+            add.setConfigMap(config)
             adds << add
         }
 
