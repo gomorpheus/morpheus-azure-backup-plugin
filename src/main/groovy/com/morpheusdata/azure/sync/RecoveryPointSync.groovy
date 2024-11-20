@@ -93,7 +93,8 @@ class RecoveryPointSync {
         itemsToAdd = itemsToAdd.sort { a, b -> AzureBackupUtility.parseDate(a.properties.recoveryPointTime) <=> AzureBackupUtility.parseDate(b.properties.recoveryPointTime) }
         def firstRecoveryDate = AzureBackupUtility.parseDate(itemsToAdd.first().properties.recoveryPointTime)
         def searchStartDate = firstRecoveryDate.toLocalDateTime().minusMinutes(1).toDate()
-        def searchEndDate = AzureBackupUtility.parseDate(itemsToAdd.last().properties.recoveryPointTime)
+        def lastRecoveryDate = AzureBackupUtility.parseDate(itemsToAdd.last().properties.recoveryPointTime)
+        def searchEndDate = lastRecoveryDate.toLocalDateTime().plusHours(24).toDate() // add 24 hours to the last recovery point, hopefully job is done by then
         def dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss a")
         def filter = "startTime eq '${dateFormat.format(searchStartDate)}' and endTime eq '${dateFormat.format(searchEndDate)}' and operation eq 'Backup' and backupManagementType eq 'AzureIaasVM' and status eq 'Completed'"
         def backupJobsResults = apiService.listBackupJobs(opts.authConfig, [resourceGroup: opts.resourceGroup, vault: opts.vault, filter: filter, client: opts.client])
