@@ -97,18 +97,29 @@ class AzureBackupJobProvider implements BackupJobProvider {
             def authConfig = apiService.getAuthConfig(backupProvider)
             def client = new HttpApiClient()
             // make empty cloud and computeServer for executeBackup
-            def computeServer = new ComputeServer()
             def cloud = new Cloud()
 
             jobBackups.each { backup ->
                 try {
                     BackupResult backupResult = new BackupResult(backup: backup)
-                    def executionResponse = executionProvider.executeBackup(backup, backupResult, [:], cloud, computeServer, [authConfig: authConfig, client: client])
-                    if(executionResponse.success && executionResponse.data) {
-                        rtn.data.add(executionResponse.data)
+                    def computeServer
+                    if(backup.computeServerId) {
+                        computeServer = this.morpheus.services.computeServer.get(backup.computeServerId)
                     } else {
-                        log.error("Failed to execute backup for: ${backup.id}, error: ${executionResponse.error}")
-                        return ServiceResponse.error("Failed to execute backup for: ${backup.id}")
+                        def workload = this.morpheus.services.workload.get(backup.containerId)
+                        computeServer = this.morpheus.services.computeServer.get(workload?.server.id)
+                    }
+
+                    if(computeServer){
+                        def executionResponse = executionProvider.executeBackup(backup, backupResult, [:], cloud, computeServer, [authConfig: authConfig, client: client])
+                        if(executionResponse.success && executionResponse.data) {
+                            rtn.data.add(executionResponse.data)
+                        } else {
+                            log.error("Failed to execute backup for: ${backup.id}, error: ${executionResponse.error}")
+                            return ServiceResponse.error("Failed to execute backup for: ${backup.id}")
+                        }
+                    } else {
+                        log.debug("no compute server for backup: ${backup.id}")
                     }
                 } catch (Exception ex) {
                     log.error("Failed to create backup result backup ${backup.id}", ex)
