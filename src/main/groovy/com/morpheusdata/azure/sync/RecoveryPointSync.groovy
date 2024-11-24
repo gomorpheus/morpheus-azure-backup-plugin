@@ -96,7 +96,8 @@ class RecoveryPointSync {
         def lastRecoveryDate = AzureBackupUtility.parseDate(itemsToAdd.last().properties.recoveryPointTime)
         def searchEndDate = lastRecoveryDate.toLocalDateTime().plusHours(24).toDate() // add 24 hours to the last recovery point, hopefully job is done by then
         def dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss a")
-        def filter = "startTime eq '${dateFormat.format(searchStartDate)}' and endTime eq '${dateFormat.format(searchEndDate)}' and operation eq 'Backup' and backupManagementType eq 'AzureIaasVM' and status eq 'Completed'"
+        // can't filter by multiple statuses or by containerName, so we need to filter later
+        def filter = "startTime eq '${dateFormat.format(searchStartDate)}' and endTime eq '${dateFormat.format(searchEndDate)}' and operation eq 'Backup' and backupManagementType eq 'AzureIaasVM'"
         def backupJobsResults = apiService.listBackupJobs(opts.authConfig, [resourceGroup: opts.resourceGroup, vault: opts.vault, filter: filter, client: opts.client])
         if(!backupJobsResults.success) {
             log.error "Error getting backup jobs: ${backupJobsResults.errorCode} - ${backupJobsResults.msg}"
@@ -148,14 +149,20 @@ class RecoveryPointSync {
             // remove IaasVMContainer; from containerName
             def containerName = opts?.containerName?.indexOf("IaasVMContainer;") >= -1 ? opts.containerName.substring(opts.containerName.indexOf("IaasVMContainer;") + 16) : opts.containerName
             def backupJob
-            // match backup job that started less than a minute before the recovery point
+            // match completed or in progress backup job that started less than a minute before the recovery point
             def matchedBackupJobs = backupJobsResults.results?.value?.findAll {
                 it.properties.containerName == containerName &&
+                (it.properties.status == 'Completed' || it.properties.status == 'InProgress') &&
                 AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isBefore(createdDate.toInstant()) &&
                 AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isAfter(createdDate.toInstant().minusSeconds(60))
             }
             if(matchedBackupJobs.size() == 1) {
-                backupJob = matchedBackupJobs.first()
+                if(matchedBackupJobs.first()?.properties?.status == 'Completed') {
+                    backupJob = matchedBackupJobs.first()
+                } else {
+                    log.debug("skipping in progress backup job: ${matchedBackupJobs.first()}")
+                    continue
+                }
             }
 
             if(backupJob) {
@@ -176,7 +183,11 @@ class RecoveryPointSync {
                         addConfig.endDate = endDate
                         addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
                     }
+                } else{
+                    log.error("Error getting backup job by name: ${backupJob.name} - ${getBackupJobResult.errorCode} - ${getBackupJobResult.msg}")
                 }
+            } else{
+                log.warn("no backup job found for recovery point: ${cloudItem.name}")
             }
             def add = new BackupResult(addConfig)
 
