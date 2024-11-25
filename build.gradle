@@ -110,5 +110,6 @@ test {
 		exceptionFormat = 'full'
 		showStandardStreams = true
 	}
+	useJUnitPlatform()
 }
 tasks.assemble.dependsOn tasks.shadowJar
