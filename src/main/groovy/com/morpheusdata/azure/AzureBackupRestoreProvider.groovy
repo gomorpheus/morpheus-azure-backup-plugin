@@ -323,6 +323,9 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 								morpheusContext.services.backup.backupRestore.save(rtn.data.backupRestore)
 
 							}
+						} else {
+							rtn.data.backupRestore.status = restoreStatus
+							doUpdate = true
 						}
 					} else {
 						if(rtn.data.backupRestore.status != restoreStatus) {
