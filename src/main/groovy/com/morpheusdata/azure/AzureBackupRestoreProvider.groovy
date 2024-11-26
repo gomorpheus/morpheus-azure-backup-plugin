@@ -9,6 +9,7 @@ import com.morpheusdata.core.backup.response.BackupRestoreResponse
 import com.morpheusdata.core.data.DataFilter
 import com.morpheusdata.core.data.DataQuery
 import com.morpheusdata.core.util.HttpApiClient
+import com.morpheusdata.model.ComputeServer
 import com.morpheusdata.response.ServiceResponse;
 import com.morpheusdata.model.BackupRestore;
 import com.morpheusdata.model.BackupResult;
@@ -150,6 +151,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			]
 			def newServerId
 			if(opts.restoreType == 'new' && opts.containerId && opts.containerId != backup.containerId) {
+				backupRestore.setConfigProperty("restoreType", "new")
 				def networkConfig = instanceConfig.networkInterfaces.network.getAt(0)
 				def subnet = networkConfig.subnet?.startsWith('subnet-') ? morpheusContext.services.networkSubnet.get(networkConfig.subnet.substring(7) as Long) : null
 				def network = networkConfig.id?.startsWith('network-') ? morpheusContext.services.network.get(networkConfig.id.substring(8) as Long) : null
@@ -274,13 +276,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 				if (getBackupJobResult.success == true && getBackupJobResult.results) {
 					def backupJob = getBackupJobResult.results
 					boolean doUpdate = false
-					log.info("backupJob: ${backupJob}")
 
-					def restoreStatus = AzureBackupUtility.getBackupStatus(backupJob.properties.status)
-					if(rtn.data.backupRestore.status != restoreStatus) {
-						rtn.data.backupRestore.status = restoreStatus
-						doUpdate = true
-					}
 					if(backupJob.properties.startTime && backupJob.properties.endTime) {
 						def startDate = AzureBackupUtility.parseDate(backupJob.properties.startTime)
 						def endDate = AzureBackupUtility.parseDate(backupJob.properties.endTime)
@@ -302,9 +298,37 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 						rtn.data.backupRestore.lastUpdated = new Date()
 					}
 
+					def restoreStatus = AzureBackupUtility.getBackupStatus(backupJob.properties.status)
 					if(restoreStatus == BackupResult.Status.SUCCEEDED.toString()) {
-						def targetWorkload = morpheusContext.services.workload.get(backupRestore.containerId)
-						morpheusContext.async.backup.backupRestore.finalizeRestore(targetWorkload)
+						def restoreToNew = backupRestore.getConfigProperty("restoreType") == "new"
+						if(restoreToNew) {
+							def targetWorkload = morpheusContext.services.workload.get(backupRestore.containerId)
+							def server = morpheusContext.services.computeServer.get(targetWorkload.server.id)
+							if(!server.externalIp) {
+								morpheusContext.async.cloud.refresh(server.cloud).subscribe()
+								// make sure to change status of restore so it doesn't overlap itself
+								rtn.data.backupRestore.status = BackupRestore.Status.FINALIZING
+								morpheusContext.services.backup.backupRestore.save(rtn.data.backupRestore)
+								waitForServerExternalIp(server)
+								server = morpheusContext.services.computeServer.get(server.id)
+							}
+							if(server.externalIp) {
+								log.debug("finalizing restore")
+								// reset agentInstalled and lastAgentUpdate
+								server.agentInstalled = false
+								server.lastAgentUpdate = null
+								morpheusContext.services.computeServer.save(server)
+								morpheusContext.async.backup.backupRestore.finalizeRestore(targetWorkload).subscribe()
+								rtn.data.backupRestore.status = BackupRestore.Status.SUCCEEDED.toString()
+								morpheusContext.services.backup.backupRestore.save(rtn.data.backupRestore)
+
+							}
+						}
+					} else {
+						if(rtn.data.backupRestore.status != restoreStatus) {
+							rtn.data.backupRestore.status = restoreStatus
+							doUpdate = true
+						}
 					}
 
 					rtn.data.updates = doUpdate
@@ -347,5 +371,28 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			}
 		}
 		return internalName
+	}
+
+	private waitForServerExternalIp(ComputeServer server) {
+		int attempt = 1
+		int maxAttempts = 20
+		boolean keepGoing = true
+		ServiceResponse rtn = ServiceResponse.prepare()
+		while ((!server.externalIp) && keepGoing) {
+			server = morpheusContext.services.computeServer.get(server.id)
+			if (server && server.externalIp) {
+				rtn.success = true
+				break
+			} else {
+				if (attempt < maxAttempts) {
+					log.debug("Waiting for server external ip attempt: ${attempt}")
+					sleep(30000)
+					attempt++
+					keepGoing = true
+				} else {
+					keepGoing = false
+				}
+			}
+		}
 	}
 }
