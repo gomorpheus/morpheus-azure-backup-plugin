@@ -84,13 +84,13 @@ jar {
 				'Plugin-Version': version,
 				'Morpheus-Name': 'Azure Backup',
 				'Morpheus-Organization': 'morpheus',
-				'Morpheus-Code': 'azure',
-				'Morpheus-Description': 'TODO: Fill in the Plugin Description',
-				'Morpheus-Logo': 'assets/morpheus.svg',
-				'Morpheus-Logo-Dark': 'assets/morpheus.svg',
-				'Morpheus-Labels': 'Plugin',
-				'Morpheus-Repo': 'https://github.com/gomorpheus/example',
-				'Morpheus-Min-Appliance-Version': "6.3.0"
+				'Morpheus-Code': 'azure-backup-plugin',
+				'Morpheus-Description': 'Plugin for Azure Backups',
+				'Morpheus-Logo': 'assets/Azure-Backup-Center.svg',
+				'Morpheus-Logo-Dark': 'assets/Azure-Backup-Center.svg',
+				'Morpheus-Labels': 'Plugin, Backup',
+				'Morpheus-Repo': 'https://github.com/gomorpheus/morpheus-azure-backup-plugin',
+				'Morpheus-Min-Appliance-Version': "7.0.9"
 		)
 	}
 }
