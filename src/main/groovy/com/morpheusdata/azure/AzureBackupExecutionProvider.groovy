@@ -93,7 +93,7 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 				while (keepGoing) {
 					def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cacheResponse.results, client: client])
 					// 204 means async task is done
-					if ((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 20) {
+					if ((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 120) { // 3 minutes
 						keepGoing = false
 					}
 
@@ -102,6 +102,9 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 						attempts++
 					}
 				}
+			} else {
+				log.error("cacheProtectableVms error: ${cacheResponse}")
+				return ServiceResponse.error("Error caching protectable vms", [error: "Error caching protectable vms"])
 			}
 
 			// check if the protectable vm is now cached
@@ -118,12 +121,15 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 						break
 					}
 				}
+			} else {
+				log.error("listProtectableVms error: ${protectableVmsResponse}")
+				return ServiceResponse.error("Error listing protectable vms", [error: "Error listing protectable vms"])
 			}
 		}
 
 		if(!protectedItemName) {
-			log.error("Protectable vm not found for ${server.externalId}. Check existing backups")
-			return ServiceResponse.error("Protectable vm not found for ${server.externalId}. Check existing backups", [error: "Protectable vm not found for ${server.externalId}. Check existing backups"])
+			log.error("Protectable vm not found for ${server.externalId}. Check if there is an existing backup with that name")
+			return ServiceResponse.error("Protectable vm not found for ${server.externalId}. Check if there is an existing backup with that name", [error: "Protectable vm not found for ${server.externalId}. Check if there is an existing backup with that name"])
 		}
 		return ServiceResponse.success(backup)
 	}
