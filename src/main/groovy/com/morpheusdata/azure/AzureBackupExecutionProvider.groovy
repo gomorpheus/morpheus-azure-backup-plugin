@@ -87,18 +87,18 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 		if(!protectedItemName) {
 			def cacheResponse = apiService.triggerCacheProtectableVms(authConfig, [resourceGroup: resourceGroup, vault: vault, client: client])
 			if (cacheResponse.success == true) {
-				sleep(1500)
+				sleep(2000)
 				def attempts = 0
 				def keepGoing = true
 				while (keepGoing) {
 					def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: cacheResponse.results, client: client])
 					// 204 means async task is done
-					if ((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 120) { // 3 minutes
+					if ((asyncResponse.success == true && asyncResponse.statusCode == '204') || attempts > 90) { // 3 minutes
 						keepGoing = false
 					}
 
 					if (keepGoing) {
-						sleep(1500)
+						sleep(2000)
 						attempts++
 					}
 				}
@@ -173,10 +173,31 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 			def protectedItemName = backup.getConfigProperty('protectedItemName')
 			def containerName = backup.getConfigProperty('containerName')
 			def vmId = backup.getConfigProperty('vmId')
+			def client = new HttpApiClient()
 
-			def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId])
+			def results = apiService.enableProtection(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, vmId: vmId, policyId: backupJob.internalId, client: client])
 			if(results.success == true && results.statusCode == '202') {
-				rtn.success = true
+				sleep(2000)
+				def attempts = 0
+				def keepGoing = true
+				while (keepGoing) {
+					def asyncResponse = apiService.getAsyncOpertationStatus(authConfig, [url: results.results, client: client])
+					if ((asyncResponse.success == true && asyncResponse.statusCode == '200') || attempts >  90) { // 3 minutes
+						keepGoing = false
+						rtn.success = true
+					}
+
+					if (asyncResponse.success == false && asyncResponse.error) {
+						keepGoing = false
+						log.error("enableProtection error: ${asyncResponse}")
+						rtn.msg = asyncResponse.error?.message ?: "Error Creating Backup"
+					}
+
+					if (keepGoing) {
+						sleep(2000)
+						attempts++
+					}
+				}
 			} else if (results.error?.message) {
 				log.error("enableProtection error: ${results.error}")
 				rtn.msg = results.error.message
