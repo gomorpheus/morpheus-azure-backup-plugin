@@ -303,8 +303,8 @@ class AzureBackupProvider extends AbstractBackupProvider {
 				if(testResults.success == true) {
 					morpheus.async.backupProvider.updateStatus(backupProviderModel, 'ok', null).subscribe().dispose()
 
-					new PolicySync(backupProviderModel, apiService, plugin).execute()
 					new VaultSync(backupProviderModel, apiService, plugin).execute()
+					new PolicySync(backupProviderModel, apiService, plugin).execute()
 					new RecoveryPointSync(backupProviderModel, apiService, plugin).execute()
 					triggerCacheAllVaultProtectableVms(backupProviderModel)
 
