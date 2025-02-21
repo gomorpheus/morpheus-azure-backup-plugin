@@ -113,7 +113,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 	/**
 	 * Execute the backup restore on the external system
 	 * @param backupRestoreModel restore to be executed
-	 * @param backupResultModel refernce to the backup result
+	 * @param backupResultModel reference to the backup result
 	 * @param backupModel reference to the backup associated with the backup result
 	 * @param opts optional parameters
 	 * @return a {@link ServiceResponse} object. A ServiceResponse with a false success will indicate a failed
@@ -137,15 +137,47 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			def instanceConfig = backupResult.getConfigMap().instanceConfig
 			def datastoreId = instanceConfig.volumes.getAt(0).datastoreId
 			def poolId = instanceConfig.config.resourcePoolId
-			def datastore = morpheusContext.services.cloud.datastore.get(datastoreId as Long)
+			def datastore
 			def pool = poolId?.startsWith('pool-') ? morpheusContext.services.cloud.pool.get(poolId.substring(5) as Long) : null
+			if(!pool) {
+				log.error("Failed to find Resource Group")
+				response.success = false
+				backupRestore.status = BackupRestore.Status.FAILED.toString()
+				backupRestore.errorMessage = "Failed to find Resource Group"
+				response.data.updates = true
+				return response
+			}
+			def regionCode = instanceConfig.config.azureRegion ?: pool.regionCode
+			if(datastoreId) {
+				datastore = morpheusContext.services.cloud.datastore.get(datastoreId as Long)
+			}
+			if(!datastore) {
+				def datastores = morpheusContext.services.cloud.datastore.list(new DataQuery().withFilters([
+						new DataFilter('zone.id', backup.zoneId),
+						new DataFilter('active', true),
+				]))
+
+				datastore = datastores?.find { it.regionCode == regionCode }
+				if(!datastore) {
+					datastore = datastores?.getAt(0)
+				}
+				if(!datastore) {
+					log.error("Failed to find Storage Account datastores: ${datastores}")
+					response.success = false
+					backupRestore.status = BackupRestore.Status.FAILED.toString()
+					backupRestore.errorMessage = "Failed to find Storage Account"
+					response.data.updates = true
+					return response
+				}
+			}
+
 			HttpApiClient client = new HttpApiClient()
 			def body = [
 				properties: [
 					objectType: 'IaasVMRestoreRequest',
 					sourceResourceId: vmId,
 					storageAccountId: datastore.internalId,
-					region: pool.regionCode,
+					region: regionCode,
 					recoveryPointId: backupResult.externalId,
 				]
 			]
@@ -239,7 +271,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			}
 		} catch (e) {
 			log.error("restoreBackup error", e)
-			response.error = "Failed to restore Commvault backup: ${e}"
+			response.error = "Failed to restore Azure backup: ${e}"
 		}
 		return response
 	}

@@ -192,16 +192,16 @@ class RecoveryPointSync {
             def add = new BackupResult(addConfig)
 
             // build condensed config of what is needed for the recovery point
-            def datastoreId = server.volumes?.sort {a, b -> a.displayOrder <=> b.displayOrder ?: b.rootVolume <=> a.rootVolume ?: a.name <=> b.name}?.getAt(0)?.datastoreOption
-            def resourcePoolId = server.getConfigProperty('resourcePoolId')
+            def volumes = server.volumes?.sort {a, b -> a.displayOrder <=> b.displayOrder ?: b.rootVolume <=> a.rootVolume ?: a.name <=> b.name}?.collect { [id: it?.id, datastoreId: it?.datastoreOption, rootVolume: it?.rootVolume ]} ?: []
+            def resourcePoolId = server.getConfigProperty('resourcePoolId') ?: server.resourcePool?.id ? "pool-${server.resourcePool?.id}".toString() : null
             def networkInterfaces = parseInterfacesToConfig(server)
             def instanceConfig = [
-                    volumes: [[datastoreId: datastoreId]],
+                    volumes: volumes,
                     networkInterfaces: networkInterfaces,
                     config: [resourcePoolId: resourcePoolId]
             ]
 
-            if(!datastoreId || !resourcePoolId || !networkInterfaces?.network?.id || !networkInterfaces?.network?.subnet ) {
+            if(!resourcePoolId || !networkInterfaces?.network?.id || !networkInterfaces?.network?.subnet ) {
                 log.error "missing required config values for recovery point: ${addConfig} config: ${instanceConfig}"
                 continue
             }
