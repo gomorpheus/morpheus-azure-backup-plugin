@@ -43,11 +43,19 @@ class PolicySync {
                 new DataFilter('account.id', backupProviderModel.account.id),
             ]))
 
+            if(backupProviderModel.getConfigProperty('updateOldCategories') == null) {
+                updateOldCategories()
+            }
+
             vaults.each { vault ->
                 def listResults = apiService.listPolicies(authConfig, [vault: vault, client: client])
                 if(listResults.success) {
                     def cloudItems = listResults.results.value
-                    Observable<BackupJobIdentityProjection> existingItems = morpheusContext.async.backupJob.listIdentityProjections(backupProviderModel)
+                    Observable<BackupJobIdentityProjection> existingItems = morpheusContext.async.backupJob.listIdentityProjections(new DataQuery().withFilters([
+                        new DataFilter('account.id', backupProviderModel.account.id),
+                        new DataFilter('backupProvider.id', backupProviderModel.id),
+                        new DataFilter('category', "azure.job.${backupProviderModel.id}.${vault.getConfigProperty('resourceGroup')}.${vault.name}"),
+                    ]))
                     SyncTask<BackupJobIdentityProjection, ArrayList<Map>, BackupJob> syncTask = new SyncTask<>(existingItems, cloudItems)
                     syncTask.addMatchFunction { BackupJobIdentityProjection domainObject, Map cloudItem ->
                         domainObject.externalId == cloudItem.name
@@ -73,7 +81,7 @@ class PolicySync {
         log.debug "addMissingBackupJobs: ${itemsToAdd}"
 
         def adds = []
-        def objCategory = "azure.job.${backupProviderModel.id}"
+        def objCategory = "azure.job.${backupProviderModel.id}.${vault.getConfigProperty('resourceGroup')}.${vault.name}"
         for(cloudItem in itemsToAdd) {
             def addConfig = [
                     account: backupProviderModel.account, backupProvider: backupProviderModel, code: objCategory + '.' + cloudItem.name,
@@ -103,6 +111,7 @@ class PolicySync {
     private updateMatchedBackupJobs(List<SyncTask.UpdateItem<BackupJob, Map>> updateItems, vault) {
         log.debug "updateMatchedBackupJobs: ${updateItems.size()}"
         def saveList = []
+        def category = "azure.job.${backupProviderModel.id}.${vault.getConfigProperty('resourceGroup')}.${vault.name}"
         try {
             for (SyncTask.UpdateItem<BackupJob, Map> update in updateItems) {
                 Map masterItem = update.masterItem
@@ -119,6 +128,14 @@ class PolicySync {
                 }
                 if (existingItem.getConfigProperty('resourceGroup') != vault.getConfigProperty('resourceGroup')) {
                     existingItem.setConfigProperty('resourceGroup', vault.getConfigProperty('resourceGroup'))
+                    doSave = true
+                }
+                if(existingItem.category != category) {
+                    existingItem.category = category
+                    doSave = true
+                }
+                if(existingItem.code != category + '.' + masterItem.name) {
+                    existingItem.code = category + '.' + masterItem.name
                     doSave = true
                 }
                 def cronExpression = parseCronExpression(masterItem.properties.schedulePolicy)
@@ -223,5 +240,46 @@ class PolicySync {
             log.error("Error parsing cron expression: ${e}", e)
         }
         return cronExpression
+    }
+
+    private updateOldCategories(){
+        List<BackupJob> oldCategoryJobs = morpheusContext.services.backupJob.list(new DataQuery().withFilters([
+                new DataFilter('account.id', backupProviderModel.account.id),
+                new DataFilter('backupProvider.id', backupProviderModel.id),
+                new DataFilter('category', "azure.job.${backupProviderModel.id}")
+        ]))
+        log.debug("updateOldCategories: ${oldCategoryJobs.size()}")
+        def saveList = []
+        def vaultPattern = ~/\/vaults\/([^\/]+)\/backupPolicies\//
+        def resourceGroupPattern = ~/\/resourceGroups\/([^\/]+)\/providers\//
+
+        oldCategoryJobs.each { BackupJob backupJob ->
+            def vaultMatcher = vaultPattern.matcher(backupJob.internalId)
+            def vaultName = vaultMatcher.find() ? vaultMatcher.group(1) : null
+            if(!vaultName) {
+                log.error("Error parsing vault from internalId: ${backupJob.internalId}")
+                return
+            }
+
+            def resourceGroupMatcher = resourceGroupPattern.matcher(backupJob.internalId)
+            def resourceGroupName = resourceGroupMatcher.find() ? resourceGroupMatcher.group(1) : null
+            if(!resourceGroupName) {
+                log.error("Error parsing resourceGroup from internalId: ${backupJob.internalId}")
+                return
+            }
+
+            def category = "azure.job.${backupProviderModel.id}.${resourceGroupName}.${vaultName}"
+            backupJob.category = category
+            backupJob.code = category + '.' + backupJob.externalId
+            backupJob.setConfigProperty('vault', vaultName)
+            backupJob.setConfigProperty('resourceGroup', resourceGroupName)
+            saveList << backupJob
+        }
+        if(saveList) {
+            morpheusContext.services.backupJob.bulkSave(saveList)
+        }
+
+        backupProviderModel.setConfigProperty('updateOldCategories', ZonedDateTime.now().toInstant().toEpochMilli())
+        morpheusContext.services.backupProvider.save(backupProviderModel)
     }
 }
