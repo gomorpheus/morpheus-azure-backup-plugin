@@ -137,10 +137,22 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			def instanceConfig = backupResult.getConfigMap().instanceConfig
 			def datastoreId = instanceConfig.volumes.getAt(0).datastoreId
 			def poolId = instanceConfig.config.resourcePoolId
+			def externalPoolId = instanceConfig.azureResourceGroupId
 			def datastore
-			def pool = poolId?.startsWith('pool-') ? morpheusContext.services.cloud.pool.get(poolId.substring(5) as Long) : null
+			def pool
+			if(poolId)
+				pool = poolId?.startsWith('pool-') ? morpheusContext.services.cloud.pool.get(poolId.substring(5) as Long) : null
+			if(!pool && externalPoolId) {
+				pool = morpheusContext.services.cloud.pool.find(new DataQuery().withFilters([
+						new DataFilter('externalId', externalPoolId),
+						new DataFilter('refType', 'ComputeZone'),
+						new DataFilter('refId', backup.zoneId),
+						new DataFilter('type', 'resourceGroup'),
+						new DataFilter("category", "azure.resourcepool.${backup.zoneId}"),
+				]))
+			}
 			if(!pool) {
-				log.error("Failed to find Resource Group")
+				log.error("Failed to find Resource Group with id: ${poolId} or externalId: ${externalPoolId}")
 				response.success = false
 				backupRestore.status = BackupRestore.Status.FAILED.toString()
 				backupRestore.errorMessage = "Failed to find Resource Group"
