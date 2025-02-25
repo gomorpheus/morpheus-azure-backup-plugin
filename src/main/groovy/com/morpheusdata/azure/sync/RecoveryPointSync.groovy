@@ -68,7 +68,7 @@ class RecoveryPointSync {
                     }.onDelete { List<BackupResult> removeItems ->
                         deleteRecoveryPoints(removeItems)
                     }.onUpdate { List<SyncTask.UpdateItem<BackupResult, Map>> updateItems ->
-                        updateMatchedRecoveryPoints(updateItems)
+                        updateMatchedRecoveryPoints(updateItems, [authConfig: authConfig, resourceGroup: resourceGroup, vault: vault, client: client])
                     }.onAdd { itemsToAdd ->
                         addMissingRecoveryPoints(itemsToAdd, backup, server, inProgressItems, [authConfig: authConfig, resourceGroup: resourceGroup, vault: vault, client: client, containerName: containerName])
                     }.withLoadObjectDetailsFromFinder { List<SyncTask.UpdateItemDto<BackupResult, Map>> updateItems ->
@@ -149,6 +149,7 @@ class RecoveryPointSync {
             // remove IaasVMContainer; from containerName
             def containerName = opts?.containerName?.indexOf("IaasVMContainer;") >= -1 ? opts.containerName.substring(opts.containerName.indexOf("IaasVMContainer;") + 16) : opts.containerName
             def backupJob
+            def snapshotCompletedForRunningJob = false
             // match completed or in progress backup job that started less than a minute before the recovery point
             def matchedBackupJobs = backupJobsResults.results?.value?.findAll {
                 it.properties.containerName == containerName &&
@@ -157,12 +158,7 @@ class RecoveryPointSync {
                 AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isAfter(createdDate.toInstant().minusSeconds(60))
             }
             if(matchedBackupJobs.size() == 1) {
-                if(matchedBackupJobs.first()?.properties?.status == 'Completed') {
-                    backupJob = matchedBackupJobs.first()
-                } else {
-                    log.debug("skipping in progress backup job: ${matchedBackupJobs.first()}")
-                    continue
-                }
+                backupJob = matchedBackupJobs.first()
             }
 
             if(backupJob) {
@@ -170,18 +166,26 @@ class RecoveryPointSync {
                 def getBackupJobResult = apiService.getBackupJob(opts.authConfig, [resourceGroup: opts.resourceGroup, vault: opts.vault, jobId: backupJob.name, client: opts.client])
                 if(getBackupJobResult.success == true && getBackupJobResult.results) {
                     backupJob = getBackupJobResult.results
+                    if(backupJob.properties.status == 'Completed') {
+                        def backupSize = backupJob.properties.extendedInfo?.propertyBag?.'Backup Size'
+                        if (backupSize) {
+                            addConfig.sizeInMb = backupSize.split(" MB")[0] as Long
+                        }
 
-                    def backupSize = backupJob.properties.extendedInfo?.propertyBag?.'Backup Size'
-                    if(backupSize) {
-                        addConfig.sizeInMb = backupSize.split(" MB")[0] as Long
-                    }
-
-                    if(backupJob.properties.startTime && backupJob.properties.endTime) {
-                        def startDate = AzureBackupUtility.parseDate(backupJob.properties.startTime)
-                        def endDate = AzureBackupUtility.parseDate(backupJob.properties.endTime)
+                        if (backupJob.properties.startTime && backupJob.properties.endTime) {
+                            def startDate = AzureBackupUtility.parseDate(backupJob.properties.startTime)
+                            def endDate = AzureBackupUtility.parseDate(backupJob.properties.endTime)
+                            addConfig.startDate = startDate
+                            addConfig.endDate = endDate
+                            addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
+                        }
+                    } else if(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.taskId == 'Take Snapshot' && backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.status == 'Completed' && backupJob.properties.status == 'InProgress') {
+                        def startDate = AzureBackupUtility.parseDate(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.startTime)
+                        def endDate = AzureBackupUtility.parseDate(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.endTime)
                         addConfig.startDate = startDate
                         addConfig.endDate = endDate
                         addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
+                        snapshotCompletedForRunningJob = true
                     }
                 } else{
                     log.error("Error getting backup job by name: ${backupJob.name} - ${getBackupJobResult.errorCode} - ${getBackupJobResult.msg}")
@@ -210,6 +214,9 @@ class RecoveryPointSync {
             def config = [cloudItem: cloudItem, instanceConfig: instanceConfig]
             if(backupJob){
                 config.backupJobId = backupJob.name
+            }
+            if(snapshotCompletedForRunningJob) {
+                config.azureBackupJobInProgress = true
             }
             add.setConfigMap(config)
             adds << add
@@ -250,9 +257,34 @@ class RecoveryPointSync {
         morpheusContext.async.backup.backupResult.bulkRemove(itemsToRemove).blockingGet()
     }
 
-    private updateMatchedRecoveryPoints(List<SyncTask.UpdateItem<BackupResult, Map>> updateItems) {
+    private updateMatchedRecoveryPoints(List<SyncTask.UpdateItem<BackupResult, Map>> updateItems, Map opts) {
         log.debug "updateMatchedRecoveryPoints: ${updateItems.size()}"
-        // azure doesn't support updating recovery points
+        def saveList = []
+        for(updateItem in updateItems) {
+            def config = updateItem.existingItem.getConfigMap()
+            if(config.azureBackupJobInProgress && config.backupJobId) {
+                log.debug("checking backup job for recovery point: ${updateItem.existingItem.externalId}")
+                def backupJobResult = apiService.getBackupJob(opts.authConfig, [resourceGroup: opts.resourceGroup, vault: opts.vault, jobId: config.backupJobId, client: opts.client])
+                if(backupJobResult.success) {
+                    def backupJob = backupJobResult.results
+                    if(backupJob.properties.status == 'Completed') {
+                        def backupSize = backupJob.properties.extendedInfo?.propertyBag?.'Backup Size'
+                        if(backupSize) {
+                            updateItem.existingItem.sizeInMb = backupSize.split(" MB")[0] as Long
+                        }
+                        updateItem.existingItem.setConfigProperty('azureBackupJobInProgress', false)
+                        saveList << updateItem.existingItem
+                    }
+                } else {
+                    log.error("Error getting backup job by id: ${config.backupJobId} - ${backupJobResult.errorCode} - ${backupJobResult.msg}")
+                    updateItem.existingItem.setConfigProperty('azureBackupJobInProgress', false)
+                    saveList << updateItem.existingItem
+                }
+            }
+        }
+        if(saveList.size() > 0) {
+            morpheusContext.async.backup.backupResult.bulkSave(saveList).blockingGet()
+        }
     }
 
     def parseInterfacesToConfig(server) {

@@ -420,7 +420,39 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 						}
 					}
 
-					if(backupJob.properties.status == 'Completed'){
+					// if snapshot is completed and backup is still in progress, set the status to succeeded and set the recovery point id
+					if(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.taskId == 'Take Snapshot' && backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.status == 'Completed' && backupJob.properties?.status == 'InProgress') {
+						def containerName = backup.getConfigProperty('containerName')
+						def protectedItemName = backup.getConfigProperty('protectedItemName')
+						def vmRecoveryPointsResponse = apiService.getVmRecoveryPoints(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, client: client])
+						if (vmRecoveryPointsResponse.success == true) {
+							def recoveryPoints = vmRecoveryPointsResponse.results.value
+							def startDate =  AzureBackupUtility.parseDate(backupJob.properties.extendedInfo.tasksList.getAt(0).startTime)
+							def endDate = AzureBackupUtility.parseDate(backupJob.properties.extendedInfo.tasksList.getAt(0).endTime)
+							def recoveryPointsBetweenDates = recoveryPoints.findAll { recoveryPoint ->
+								def recoveryPointTime = AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime)
+								(recoveryPointTime.after(startDate) || recoveryPointTime.equals(startDate)) && (recoveryPointTime.before(endDate) || recoveryPointTime.equals(endDate))
+							}
+
+							// Find the recovery point with the closest recoveryPointTime to the start date
+							def closestRecoveryPoint = recoveryPointsBetweenDates.min { recoveryPoint ->
+								Math.abs(startDate.getTime() - AzureBackupUtility.parseDate(recoveryPoint.properties.recoveryPointTime).getTime())
+							}
+
+							if(closestRecoveryPoint) {
+								rtn.data.backupResult.setConfigProperty("recoveryPointId", closestRecoveryPoint.name)
+								rtn.data.backupResult.setConfigProperty('azureBackupJobInProgress', true)
+								rtn.data.backupResult.externalId = closestRecoveryPoint.name
+								rtn.data.backupResult.startDate = startDate
+								rtn.data.backupResult.endDate = endDate
+								rtn.data.backupResult.durationMillis = endDate.time - startDate.time
+								rtn.data.backupResult.status = BackupResult.Status.SUCCEEDED.toString()
+								doUpdate = true
+							}
+						}
+					}
+
+					else if(backupJob.properties.status == 'Completed'){
 						def containerName = backup.getConfigProperty('containerName')
 						def protectedItemName = backup.getConfigProperty('protectedItemName')
 						// Azure doesn't link the job to the recovery point, so we need to find the closest recovery point to the startDate
@@ -464,6 +496,7 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 					rtn.msg = "Failed to get backup job with status code: ${getBackupJobResult.statusCode}"
 				}
 				else {
+					log.error("Failed to get backup job getBackupJobResult: ${getBackupJobResult}")
 					rtn.msg = "Failed to get backup job"
 				}
 			}
