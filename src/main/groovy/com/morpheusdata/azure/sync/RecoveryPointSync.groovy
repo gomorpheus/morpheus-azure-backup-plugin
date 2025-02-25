@@ -92,7 +92,7 @@ class RecoveryPointSync {
 
         itemsToAdd = itemsToAdd.sort { a, b -> AzureBackupUtility.parseDate(a.properties.recoveryPointTime) <=> AzureBackupUtility.parseDate(b.properties.recoveryPointTime) }
         def firstRecoveryDate = AzureBackupUtility.parseDate(itemsToAdd.first().properties.recoveryPointTime)
-        def searchStartDate = firstRecoveryDate.toLocalDateTime().minusMinutes(1).toDate()
+        def searchStartDate = firstRecoveryDate.toLocalDateTime().minusMinutes(2).toDate()
         def lastRecoveryDate = AzureBackupUtility.parseDate(itemsToAdd.last().properties.recoveryPointTime)
         def searchEndDate = lastRecoveryDate.toLocalDateTime().plusHours(24).toDate() // add 24 hours to the last recovery point, hopefully job is done by then
         def dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss a")
@@ -150,12 +150,12 @@ class RecoveryPointSync {
             def containerName = opts?.containerName?.indexOf("IaasVMContainer;") >= -1 ? opts.containerName.substring(opts.containerName.indexOf("IaasVMContainer;") + 16) : opts.containerName
             def backupJob
             def snapshotCompletedForRunningJob = false
-            // match completed or in progress backup job that started less than a minute before the recovery point
+            // match completed or in progress backup job that started less than 2 minutes before the recovery point
             def matchedBackupJobs = backupJobsResults.results?.value?.findAll {
                 it.properties.containerName == containerName &&
                 (it.properties.status == 'Completed' || it.properties.status == 'InProgress') &&
                 AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isBefore(createdDate.toInstant()) &&
-                AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isAfter(createdDate.toInstant().minusSeconds(60))
+                AzureBackupUtility.parseDate(it.properties.startTime).toInstant().isAfter(createdDate.toInstant().minusSeconds(120))
             }
             if(matchedBackupJobs.size() == 1) {
                 backupJob = matchedBackupJobs.first()
