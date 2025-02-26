@@ -174,11 +174,6 @@ class RecoveryPointSync {
                         addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
                         snapshotCompleted = true
                     } else if(backupJob.properties.status == 'Completed') {
-                        def backupSize = backupJob.properties.extendedInfo?.propertyBag?.'Backup Size'
-                        if (backupSize) {
-                            addConfig.sizeInMb = backupSize.split(" MB")[0] as Long
-                        }
-
                         if (backupJob.properties.startTime && backupJob.properties.endTime) {
                             def startDate = AzureBackupUtility.parseDate(backupJob.properties.startTime)
                             def endDate = AzureBackupUtility.parseDate(backupJob.properties.endTime)
@@ -186,6 +181,10 @@ class RecoveryPointSync {
                             addConfig.endDate = endDate
                             addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
                         }
+                    }
+                    def backupSize = backupJob.properties?.extendedInfo?.propertyBag?.'Backup Size'
+                    if (backupSize) {
+                        addConfig.sizeInMb = backupSize.split(" MB")[0] as Long
                     }
                 } else{
                     log.error("Error getting backup job by name: ${backupJob.name} - ${getBackupJobResult.errorCode} - ${getBackupJobResult.msg}")
