@@ -215,7 +215,7 @@ class RecoveryPointSync {
             if(backupJob){
                 config.backupJobId = backupJob.name
             }
-            if(snapshotCompleted) {
+            if(snapshotCompleted && backupJob.properties.status == 'InProgress') {
                 config.azureBackupJobInProgress = true
             }
             add.setConfigMap(config)
