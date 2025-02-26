@@ -149,7 +149,7 @@ class RecoveryPointSync {
             // remove IaasVMContainer; from containerName
             def containerName = opts?.containerName?.indexOf("IaasVMContainer;") >= -1 ? opts.containerName.substring(opts.containerName.indexOf("IaasVMContainer;") + 16) : opts.containerName
             def backupJob
-            def snapshotCompletedForRunningJob = false
+            def snapshotCompleted = false
             // match completed or in progress backup job that started less than 2 minutes before the recovery point
             def matchedBackupJobs = backupJobsResults.results?.value?.findAll {
                 it.properties.containerName == containerName &&
@@ -166,7 +166,14 @@ class RecoveryPointSync {
                 def getBackupJobResult = apiService.getBackupJob(opts.authConfig, [resourceGroup: opts.resourceGroup, vault: opts.vault, jobId: backupJob.name, client: opts.client])
                 if(getBackupJobResult.success == true && getBackupJobResult.results) {
                     backupJob = getBackupJobResult.results
-                    if(backupJob.properties.status == 'Completed') {
+                    if(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.taskId == 'Take Snapshot' && backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.status == 'Completed') {
+                        def startDate = AzureBackupUtility.parseDate(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.startTime)
+                        def endDate = AzureBackupUtility.parseDate(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.endTime)
+                        addConfig.startDate = startDate
+                        addConfig.endDate = endDate
+                        addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
+                        snapshotCompleted = true
+                    } else if(backupJob.properties.status == 'Completed') {
                         def backupSize = backupJob.properties.extendedInfo?.propertyBag?.'Backup Size'
                         if (backupSize) {
                             addConfig.sizeInMb = backupSize.split(" MB")[0] as Long
@@ -179,13 +186,6 @@ class RecoveryPointSync {
                             addConfig.endDate = endDate
                             addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
                         }
-                    } else if(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.taskId == 'Take Snapshot' && backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.status == 'Completed' && backupJob.properties.status == 'InProgress') {
-                        def startDate = AzureBackupUtility.parseDate(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.startTime)
-                        def endDate = AzureBackupUtility.parseDate(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.endTime)
-                        addConfig.startDate = startDate
-                        addConfig.endDate = endDate
-                        addConfig.durationMillis = (endDate && startDate) ? (endDate.time - startDate.time) : 0
-                        snapshotCompletedForRunningJob = true
                     }
                 } else{
                     log.error("Error getting backup job by name: ${backupJob.name} - ${getBackupJobResult.errorCode} - ${getBackupJobResult.msg}")
@@ -215,7 +215,7 @@ class RecoveryPointSync {
             if(backupJob){
                 config.backupJobId = backupJob.name
             }
-            if(snapshotCompletedForRunningJob) {
+            if(snapshotCompleted) {
                 config.azureBackupJobInProgress = true
             }
             add.setConfigMap(config)

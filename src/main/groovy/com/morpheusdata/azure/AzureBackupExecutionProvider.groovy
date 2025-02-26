@@ -420,8 +420,8 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 						}
 					}
 
-					// if snapshot is completed and backup is still in progress, set the status to succeeded and set the recovery point id
-					if(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.taskId == 'Take Snapshot' && backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.status == 'Completed' && backupJob.properties?.status == 'InProgress') {
+					// if snapshot is completed, set the status to succeeded and set the recovery point id
+					if(backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.taskId == 'Take Snapshot' && backupJob.properties?.extendedInfo?.tasksList?.getAt(0)?.status == 'Completed') {
 						def containerName = backup.getConfigProperty('containerName')
 						def protectedItemName = backup.getConfigProperty('protectedItemName')
 						def vmRecoveryPointsResponse = apiService.getVmRecoveryPoints(authConfig, [resourceGroup: resourceGroup, vault: vault, containerName: containerName, protectedItemName: protectedItemName, client: client])
