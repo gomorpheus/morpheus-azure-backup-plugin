@@ -441,7 +441,9 @@ class AzureBackupExecutionProvider implements BackupExecutionProvider {
 
 							if(closestRecoveryPoint) {
 								rtn.data.backupResult.setConfigProperty("recoveryPointId", closestRecoveryPoint.name)
-								rtn.data.backupResult.setConfigProperty('azureBackupJobInProgress', true)
+								if(backupJob.properties?.status == 'InProgress') {
+									rtn.data.backupResult.setConfigProperty('azureBackupJobInProgress', true)
+								}
 								rtn.data.backupResult.externalId = closestRecoveryPoint.name
 								rtn.data.backupResult.startDate = startDate
 								rtn.data.backupResult.endDate = endDate
