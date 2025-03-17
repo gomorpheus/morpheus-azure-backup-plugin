@@ -90,7 +90,7 @@ jar {
 				'Morpheus-Logo-Dark': 'assets/Azure-Backup-Center.svg',
 				'Morpheus-Labels': 'Plugin, Backup',
 				'Morpheus-Repo': 'https://github.com/gomorpheus/morpheus-azure-backup-plugin',
-				'Morpheus-Min-Appliance-Version': "7.0.9"
+				'Morpheus-Min-Appliance-Version': "8.0.5"
 		)
 	}
 }
