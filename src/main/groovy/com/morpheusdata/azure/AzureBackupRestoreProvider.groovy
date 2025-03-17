@@ -76,6 +76,7 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 	 */
 	@Override
 	ServiceResponse validateRestoreBackup(BackupResult backupResult, Map opts) {
+		log.debug("validateRestoreBackup, backupResult: ${backupResult}, opts: ${opts}")
 		return ServiceResponse.success()
 	}
 
@@ -135,7 +136,6 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			def containerName = backup.getConfigProperty('containerName')
 			def vmId = backup.getConfigProperty('vmId')
 			def instanceConfig = backupResult.getConfigMap().instanceConfig
-			def datastoreId = instanceConfig.volumes.getAt(0).datastoreId
 			def poolId = instanceConfig.config.resourcePoolId
 			def externalPoolId = instanceConfig.azureResourceGroupId
 			def datastore
@@ -160,27 +160,20 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 				return response
 			}
 			def regionCode = instanceConfig.config.azureRegion ?: pool.regionCode
-			if(datastoreId) {
-				datastore = morpheusContext.services.cloud.datastore.get(datastoreId as Long)
+			if(opts.config?.storageAccount){
+				datastore = morpheusContext.services.cloud.datastore.find(new DataQuery().withFilters([
+						new DataFilter('externalId', opts.config.storageAccount),
+						new DataFilter('zone.id', backup.zoneId),
+						new DataFilter('active', true)])
+				)
 			}
 			if(!datastore) {
-				def datastores = morpheusContext.services.cloud.datastore.list(new DataQuery().withFilters([
-						new DataFilter('zone.id', backup.zoneId),
-						new DataFilter('active', true),
-				]))
-
-				datastore = datastores?.find { it.regionCode == regionCode }
-				if(!datastore) {
-					datastore = datastores?.getAt(0)
-				}
-				if(!datastore) {
-					log.error("Failed to find Storage Account datastores: ${datastores}")
-					response.success = false
-					backupRestore.status = BackupRestore.Status.FAILED.toString()
-					backupRestore.errorMessage = "Failed to find Storage Account"
-					response.data.updates = true
-					return response
-				}
+				log.error("Failed to find Storage Account with external id: ${opts.config?.storageAccount}")
+				response.success = false
+				backupRestore.status = BackupRestore.Status.FAILED.toString()
+				backupRestore.errorMessage = "Failed to find Storage Account"
+				response.data.updates = true
+				return response
 			}
 
 			HttpApiClient client = new HttpApiClient()

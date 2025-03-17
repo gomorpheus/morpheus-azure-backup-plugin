@@ -157,7 +157,39 @@ class AzureBackupTypeProvider extends AbstractBackupTypeProvider {
 			)
 		])
 	}
-	
+
+	/**
+	 * A list of {@link OptionType OptionTypes} for use in the backup restore to new form.
+	 * @return a list of option types
+	 */
+	@Override
+	Collection<OptionType> getRestoreNewOptionTypes() {
+		return new ArrayList<OptionType>([
+			new OptionType(
+				code: 'backupProviderType.azure.storageAccount', inputType: OptionType.InputType.SELECT, name: 'Storage Account', category: 'backupProviderType.azure', noBlank: true,
+				fieldName: 'storageAccount', fieldCode: 'gomorpheus.label.storageAccount', fieldLabel: 'Storage Account', fieldContext: 'config', fieldSet: '', fieldGroup: 'Options',
+				required: true, enabled: true, editable: true, global: false, optionSource: 'azureBackup.azureBackupDatastores',
+				placeHolder: null, helpBlock: 'This storage account will be used as a temporary location during the restore.', defaultValue: null, custom: false, displayOrder: 1, fieldClass: null, fieldSize: 15
+			)
+		])
+	}
+
+	/**
+	 * A list of {@link OptionType OptionTypes} for use in the backup restore to existing form.
+	 * @return a list of option types
+	 */
+	@Override
+	Collection<OptionType> getRestoreExistingOptionTypes() {
+		return new ArrayList<OptionType>([
+			new OptionType(
+				code: 'backupProviderType.azure.storageAccount', inputType: OptionType.InputType.SELECT, name: 'Storage Account', category: 'backupProviderType.azure', noBlank: true,
+				fieldName: 'storageAccount', fieldCode: 'gomorpheus.label.storageAccount', fieldLabel: 'Storage Account', fieldContext: 'config', fieldSet: '', fieldGroup: 'Options',
+				required: true, enabled: true, editable: true, global: false, optionSource: 'azureBackup.azureBackupDatastores',
+				placeHolder: null, helpBlock: 'This storage account will be used as a temporary location during the restore.', defaultValue: null, custom: false, displayOrder: 1, fieldClass: null, fieldSize: 15
+			)
+		])
+	}
+
 	/**
 	 * Get the backup provider which will be responsible for all the operations related to backup executions.
 	 * @return a {@link BackupExecutionProvider} providing methods for backup execution.

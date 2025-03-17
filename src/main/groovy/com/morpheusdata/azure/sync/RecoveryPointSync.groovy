@@ -195,11 +195,9 @@ class RecoveryPointSync {
             def add = new BackupResult(addConfig)
 
             // build condensed config of what is needed for the recovery point
-            def volumes = server.volumes?.sort {a, b -> a.displayOrder <=> b.displayOrder ?: b.rootVolume <=> a.rootVolume ?: a.name <=> b.name}?.collect { [id: it?.id, datastoreId: it?.datastoreOption, rootVolume: it?.rootVolume ]} ?: []
             def resourcePoolId = server.getConfigProperty('resourcePoolId') ?: server.resourcePool?.id ? "pool-${server.resourcePool?.id}".toString() : null
             def networkInterfaces = parseInterfacesToConfig(server)
             def instanceConfig = [
-                    volumes: volumes,
                     networkInterfaces: networkInterfaces,
                     config: [resourcePoolId: resourcePoolId]
             ]
