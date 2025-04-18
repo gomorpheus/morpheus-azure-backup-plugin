@@ -141,7 +141,15 @@ class AzureBackupRestoreProvider implements BackupRestoreProvider {
 			def datastore
 			def pool
 			if(poolId)
-				pool = poolId?.startsWith('pool-') ? morpheusContext.services.cloud.pool.get(poolId.substring(5) as Long) : null
+				if(poolId instanceof String && poolId.startsWith('pool-')) {
+					pool = morpheusContext.services.cloud.pool.get(poolId.substring(5) as Long)
+				} else {
+					try {
+						pool = morpheusContext.services.cloud.pool.get(poolId.toLong())
+					} catch (NumberFormatException e) {
+						log.warn("Failed to parse poolId: ${poolId} to Long", e)
+					}
+				}
 			if(!pool && externalPoolId) {
 				pool = morpheusContext.services.cloud.pool.find(new DataQuery().withFilters([
 						new DataFilter('externalId', externalPoolId),
